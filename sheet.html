@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>popn_clear - Record Sheet</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="./index.html" aria-label="popn_clear home">
+          <span class="brand-mark">pc</span>
+          <span>
+            <strong>popn_clear</strong>
+            <small>clear lamp sheet</small>
+          </span>
+        </a>
+
+        <nav class="level-nav" aria-label="level">
+          <button class="level-pill muted" type="button" disabled>45</button>
+          <button class="level-pill active" type="button" data-level="46">46</button>
+          <button class="level-pill muted" type="button" data-level="47">47</button>
+          <button class="level-pill muted" type="button" data-level="48">48</button>
+          <button class="level-pill muted" type="button" data-level="49">49</button>
+          <button class="level-pill muted" type="button" data-level="50">50</button>
+        </nav>
+
+        <div class="profile-actions">
+          <div class="sync-actions" aria-label="record sync actions">
+            <button class="sync-button" type="button" data-action="save-local" title="保存到浏览器缓存">
+              <span>↥</span>
+              上传至本地
+            </button>
+            <button class="sync-button" type="button" data-action="save-account" title="登录后同步到账号">
+              <span>↥</span>
+              上传至账号
+            </button>
+            <button class="sync-button" type="button" data-action="load-local" title="从浏览器缓存恢复">
+              <span>↧</span>
+              本地加载
+            </button>
+            <button class="sync-button" type="button" data-action="load-account" title="登录后读取账号记录">
+              <span>↧</span>
+              从账号加载
+            </button>
+          </div>
+          <a class="icon-button room-button" href="./lounge.html" aria-label="进入交流室" title="交流室">🏠</a>
+          <div class="profile-menu">
+            <button class="profile-chip" id="profile-menu-toggle" type="button" aria-expanded="false" aria-haspopup="true">
+              <span class="profile-dot"></span>
+              <span id="profile-name">guest</span>
+            </button>
+            <div class="profile-dropdown" id="profile-dropdown" hidden>
+              <button type="button" data-auth-action="login">
+                <span class="menu-icon">in</span>
+                <span>
+                  <strong>登录</strong>
+                  <small>输入账号 ID</small>
+                </span>
+              </button>
+              <button type="button" data-auth-action="register">
+                <span class="menu-icon">+</span>
+                <span>
+                  <strong>注册账号</strong>
+                  <small>创建一个显示 ID</small>
+                </span>
+              </button>
+              <button type="button" data-auth-action="logout">
+                <span class="menu-icon">out</span>
+                <span>
+                  <strong>退出登录</strong>
+                  <small>回到 guest</small>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="main-grid">
+        <aside class="side-panel">
+          <div class="level-title">
+            <span>Difficulty</span>
+            <strong id="current-level">46</strong>
+          </div>
+
+          <div class="progress-box">
+            <span id="clear-count">0 / 0</span>
+            <div class="progress-track">
+              <span id="clear-progress"></span>
+            </div>
+          </div>
+
+          <button class="sort-button" id="sort-toggle" type="button" aria-pressed="false">
+            <span>Sort</span>
+            <strong id="sort-label">Asc</strong>
+          </button>
+
+          <div class="group-list" id="group-list"></div>
+
+          <section class="lamp-chart" aria-label="clear lamp chart">
+            <div class="pie-chart" id="lamp-pie"></div>
+            <div class="pie-legend" id="pie-legend"></div>
+          </section>
+        </aside>
+
+        <section class="song-area" aria-label="song records">
+          <div class="toolbar">
+            <div>
+              <p class="eyebrow">pop'n music</p>
+              <h1 id="page-title">Lv46 Record Sheet</h1>
+            </div>
+            <div class="toolbar-actions">
+              <label class="search-box">
+                <span>Search</span>
+                <input id="search" type="search" placeholder="Title / genre" />
+              </label>
+              <button class="ghost-button" id="reset-demo" type="button">Reset</button>
+            </div>
+          </div>
+
+          <div class="legend" aria-label="clear status colors">
+            <span><i class="legend-dot fail"></i>fail</span>
+            <span><i class="legend-dot clear"></i>clear</span>
+            <span><i class="legend-dot fc"></i>full combo</span>
+            <span><i class="legend-dot perfect"></i>perfect</span>
+          </div>
+
+          <div id="song-list" class="song-sections"></div>
+        </section>
+      </main>
+    </div>
+
+    <template id="song-section-template">
+      <section class="song-section">
+        <div class="section-heading">
+          <h2></h2>
+          <span></span>
+        </div>
+        <div class="song-list"></div>
+      </section>
+    </template>
+
+    <template id="song-card-template">
+      <article class="song-card">
+        <div class="song-main">
+          <div class="song-content">
+            <div class="song-head">
+              <div>
+                <p class="genre"></p>
+                <h3 class="title"></h3>
+              </div>
+              <span class="danger-badge" hidden>杈涖偛銉笺偢</span>
+            </div>
+
+            <dl class="meta-grid">
+              <div>
+                <dt>Notes</dt>
+                <dd class="notes"></dd>
+              </div>
+              <div class="diff-cell">
+                <dt>Diff.</dt>
+                <dd class="difficulty"></dd>
+              </div>
+            </dl>
+          </div>
+
+          <div class="icon-rail">
+            <img class="medal-preview" alt="" hidden />
+            <img class="score-preview" alt="" hidden />
+          </div>
+        </div>
+
+        <div class="control-grid">
+          <label>
+            <span>clear</span>
+            <select class="clear-select"></select>
+          </label>
+          <label>
+            <span>medal</span>
+            <select class="medal-select"></select>
+          </label>
+          <label>
+            <span>score</span>
+            <input class="score-input" type="number" inputmode="numeric" min="0" max="100000" placeholder="-" />
+          </label>
+          <label>
+            <span>rank</span>
+            <select class="score-rank-select"></select>
+          </label>
+        </div>
+      </article>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

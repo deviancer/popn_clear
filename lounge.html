@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>popn_clear - 交流室</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell lounge-shell">
+      <header class="topbar">
+        <a class="brand" href="./index.html" aria-label="popn_clear home">
+          <span class="brand-mark">pc</span>
+          <span>
+            <strong>popn_clear</strong>
+            <small>community board</small>
+          </span>
+        </a>
+
+        <nav class="level-nav" aria-label="level">
+          <a class="level-pill nav-link-pill" href="./sheet.html?level=46">46</a>
+          <a class="level-pill nav-link-pill" href="./sheet.html?level=47">47</a>
+          <a class="level-pill nav-link-pill" href="./sheet.html?level=48">48</a>
+          <a class="level-pill nav-link-pill" href="./sheet.html?level=49">49</a>
+          <a class="level-pill nav-link-pill" href="./sheet.html?level=50">50</a>
+          <a class="level-pill nav-link-pill active" href="./lounge.html">交流室</a>
+        </nav>
+
+        <div class="profile-chip">
+          <span class="profile-dot"></span>
+          <span>guest</span>
+        </div>
+      </header>
+
+      <main class="lounge-grid">
+        <section class="lounge-main">
+          <div class="lounge-heading">
+            <div>
+              <p class="eyebrow">community room</p>
+              <h1>交流室</h1>
+            </div>
+            <button class="ghost-button submit-preview" type="button">提交当前数据</button>
+          </div>
+
+          <div class="level-tabs" aria-label="community level filters">
+            <button class="active" type="button">46</button>
+            <button type="button">47</button>
+            <button type="button">48</button>
+            <button type="button">49</button>
+            <button type="button">50</button>
+          </div>
+
+          <div class="rank-table-wrap">
+            <table class="rank-table">
+              <thead>
+                <tr>
+                  <th>玩家</th>
+                  <th>Lv</th>
+                  <th>总曲数</th>
+                  <th>Clear</th>
+                  <th>FC</th>
+                  <th>Perfect</th>
+                  <th>完成率</th>
+                  <th>更新时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>deviancer</strong></td>
+                  <td>46</td>
+                  <td>192</td>
+                  <td>186</td>
+                  <td>72</td>
+                  <td>8</td>
+                  <td><span class="rate-pill high">96.9%</span></td>
+                  <td>2026-06-11 21:18</td>
+                </tr>
+                <tr>
+                  <td><strong>guest_alpha</strong></td>
+                  <td>46</td>
+                  <td>192</td>
+                  <td>171</td>
+                  <td>44</td>
+                  <td>3</td>
+                  <td><span class="rate-pill mid">89.1%</span></td>
+                  <td>2026-06-10 23:42</td>
+                </tr>
+                <tr>
+                  <td><strong>popn_room</strong></td>
+                  <td>46</td>
+                  <td>192</td>
+                  <td>153</td>
+                  <td>31</td>
+                  <td>1</td>
+                  <td><span class="rate-pill mid">79.7%</span></td>
+                  <td>2026-06-09 19:05</td>
+                </tr>
+                <tr>
+                  <td><strong>local_player</strong></td>
+                  <td>46</td>
+                  <td>192</td>
+                  <td>128</td>
+                  <td>18</td>
+                  <td>0</td>
+                  <td><span class="rate-pill low">66.7%</span></td>
+                  <td>2026-06-08 12:30</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <section class="activity-panel">
+            <div class="activity-heading">
+              <p class="eyebrow">activity log</p>
+              <h2>消息数据</h2>
+            </div>
+            <div class="activity-box" aria-label="community activity messages">
+              <p><strong>deviancer</strong> 在 2026-06-11 21:18 更新了 Lv46 数据，新增 clear 4 首，新增 full combo 1 首。</p>
+              <p><strong>guest_alpha</strong> 在 2026-06-10 23:42 更新了 Lv46 数据，clear 总数达到 171。</p>
+              <p><strong>popn_room</strong> 在 2026-06-09 19:05 首次提交了 Lv46 点灯记录。</p>
+              <p><strong>local_player</strong> 在 2026-06-08 12:30 更新了 Lv46 数据，新增 clear 12 首。</p>
+            </div>
+          </section>
+        </section>
+
+        <aside class="lounge-side">
+          <section class="submit-panel">
+            <p class="eyebrow">submit preview</p>
+            <h2>本地记录提交</h2>
+            <p>登录后可以把当前等级的统计数据同步到交流室。未登录时仍然可以继续在本机点灯。</p>
+            <div class="submit-stats">
+              <span><b>Lv46</b><em>当前等级</em></span>
+              <span><b>0 / 0</b><em>本地统计</em></span>
+            </div>
+          </section>
+        </aside>
+      </main>
+    </div>
+  </body>
+</html>
