@@ -56,14 +56,14 @@
                 <span class="menu-icon">in</span>
                 <span>
                   <strong>登录</strong>
-                  <small>输入账号 ID</small>
+                  <small>邮箱和密码</small>
                 </span>
               </button>
               <button type="button" data-auth-action="register">
                 <span class="menu-icon">+</span>
                 <span>
                   <strong>注册账号</strong>
-                  <small>创建一个显示 ID</small>
+                  <small>创建玩家 ID</small>
                 </span>
               </button>
               <button type="button" data-auth-action="logout">
@@ -94,7 +94,7 @@
 
           <button class="sort-button" id="sort-toggle" type="button" aria-pressed="false">
             <span>Sort</span>
-            <strong id="sort-label">Asc</strong>
+            <strong id="sort-label">↑</strong>
           </button>
 
           <div class="group-list" id="group-list"></div>
@@ -193,6 +193,47 @@
       </article>
     </template>
 
+    <div class="modal-backdrop" id="auth-modal" hidden>
+      <section class="modal-panel auth-panel" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+        <button class="modal-close" type="button" data-modal-close="auth" aria-label="关闭">×</button>
+        <p class="eyebrow">account</p>
+        <h2 id="auth-modal-title">登录</h2>
+        <p class="modal-copy" id="auth-modal-copy">登录后可以把本机点灯记录同步到账号。</p>
+        <form id="auth-form">
+          <label>
+            <span>邮箱</span>
+            <input id="auth-email" type="email" autocomplete="email" required />
+          </label>
+          <label>
+            <span>密码</span>
+            <input id="auth-password" type="password" autocomplete="current-password" minlength="8" required />
+          </label>
+          <label id="auth-display-field">
+            <span>玩家 ID</span>
+            <input id="auth-display-name" type="text" autocomplete="nickname" maxlength="24" />
+          </label>
+          <div class="modal-actions">
+            <button class="ghost-button" type="button" data-modal-close="auth">取消</button>
+            <button class="modal-primary" id="auth-submit" type="submit">登录</button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="message-modal" hidden>
+      <section class="modal-panel message-panel" role="dialog" aria-modal="true" aria-labelledby="message-modal-title">
+        <button class="modal-close" type="button" data-modal-close="message" aria-label="关闭">×</button>
+        <h2 id="message-modal-title">提示</h2>
+        <p class="modal-copy" id="message-modal-copy"></p>
+        <div class="modal-actions">
+          <button class="ghost-button" id="message-cancel" type="button">取消</button>
+          <button class="modal-primary" id="message-ok" type="button">确定</button>
+        </div>
+      </section>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./supabase-config.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

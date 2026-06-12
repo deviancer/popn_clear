@@ -1,5 +1,6 @@
 const iconPath = (name) => `./icon/${name}.png`;
 
+const SUPABASE_CONFIG = window.POPN_SUPABASE || {};
 const AVAILABLE_LEVELS = ["46", "47", "48", "49", "50"];
 const MAJOR_ORDER = ["入門", "逆詐称", "弱", "中", "強", "詐称", "別格", "未定"];
 
@@ -75,7 +76,9 @@ const CHART_ITEMS = [
 
 const stateByLevel = {};
 const songsByLevel = {};
-const initialLevel = new URLSearchParams(window.location.search).get("level");
+const initialParams = new URLSearchParams(window.location.search);
+const initialLevel = initialParams.get("level");
+const initialAuthMode = initialParams.get("auth");
 let currentLevel = AVAILABLE_LEVELS.includes(initialLevel) ? initialLevel : "46";
 let activeFilter = { type: "all" };
 let query = "";
@@ -100,6 +103,99 @@ const pageTitle = document.querySelector("#page-title");
 const profileMenuToggle = document.querySelector("#profile-menu-toggle");
 const profileDropdown = document.querySelector("#profile-dropdown");
 const profileName = document.querySelector("#profile-name");
+const authModal = document.querySelector("#auth-modal");
+const authForm = document.querySelector("#auth-form");
+const authModalTitle = document.querySelector("#auth-modal-title");
+const authModalCopy = document.querySelector("#auth-modal-copy");
+const authEmail = document.querySelector("#auth-email");
+const authPassword = document.querySelector("#auth-password");
+const authDisplayField = document.querySelector("#auth-display-field");
+const authDisplayName = document.querySelector("#auth-display-name");
+const authSubmit = document.querySelector("#auth-submit");
+const messageModal = document.querySelector("#message-modal");
+const messageModalTitle = document.querySelector("#message-modal-title");
+const messageModalCopy = document.querySelector("#message-modal-copy");
+const messageOk = document.querySelector("#message-ok");
+const messageCancel = document.querySelector("#message-cancel");
+let supabaseClient = null;
+let authMode = "login";
+let messageResolver = null;
+const authState = {
+  user: null,
+  profile: null,
+};
+
+function getSupabaseClient({ notify = false } = {}) {
+  if (supabaseClient) return supabaseClient;
+
+  if (!SUPABASE_CONFIG.url || !SUPABASE_CONFIG.key) {
+    if (notify) showNotice("Supabase 还没有配置 Project URL。请先填写 supabase-config.js 里的 url。");
+    return null;
+  }
+
+  if (!window.supabase?.createClient) {
+    if (notify) showNotice("Supabase SDK 没有加载成功，请检查网络或 CDN。");
+    return null;
+  }
+
+  supabaseClient = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
+  return supabaseClient;
+}
+
+function closeMessageModal(value = false) {
+  messageModal.hidden = true;
+  if (messageResolver) {
+    messageResolver(value);
+    messageResolver = null;
+  }
+}
+
+function showMessage(message, { title = "提示", confirm = false } = {}) {
+  if (!messageModal || !messageModalCopy || !messageOk || !messageCancel) {
+    return Promise.resolve(confirm ? window.confirm(message) : (window.alert(message), true));
+  }
+
+  messageModalTitle.textContent = title;
+  messageModalCopy.textContent = message;
+  messageCancel.hidden = !confirm;
+  messageModal.hidden = false;
+  messageOk.focus();
+
+  return new Promise((resolve) => {
+    messageResolver = resolve;
+  });
+}
+
+function showNotice(message, title = "提示") {
+  return showMessage(message, { title });
+}
+
+function showConfirm(message, title = "确认") {
+  return showMessage(message, { title, confirm: true });
+}
+
+function openAuthModal(mode) {
+  authMode = mode;
+  const isRegister = mode === "register";
+
+  authModalTitle.textContent = isRegister ? "注册账号" : "登录";
+  authModalCopy.textContent = isRegister
+    ? "创建账号后，可以把本机点灯记录上传到账号并显示在交流室。"
+    : "登录后可以上传账号记录，也可以从账号恢复点灯数据。";
+  authSubmit.textContent = isRegister ? "注册" : "登录";
+  authDisplayField.hidden = !isRegister;
+  authDisplayName.required = isRegister;
+  authPassword.autocomplete = isRegister ? "new-password" : "current-password";
+  authForm.reset();
+
+  if (authState.user?.email) authEmail.value = authState.user.email;
+  authModal.hidden = false;
+  authEmail.focus();
+}
+
+function closeAuthModal() {
+  authModal.hidden = true;
+}
 
 function loadState(level) {
   if (!stateByLevel[level]) {
@@ -134,12 +230,14 @@ function buildLevelSnapshot(level = currentLevel) {
 function buildAccountSyncPayload(level = currentLevel) {
   const state = loadState(level);
   const counts = { fail: 0, clear: 0, fc: 0, perfect: 0, blank: 0 };
+  let medalCount = 0;
   const levelSongs = songsByLevel[level] || (level === currentLevel ? songs : []);
 
   levelSongs.forEach((song) => {
     const record = state[songId(song)] || {};
     normalizeRecord(record);
     counts[recordKind(record)] += 1;
+    if (record.medal) medalCount += 1;
   });
 
   return {
@@ -147,6 +245,7 @@ function buildAccountSyncPayload(level = currentLevel) {
     total: levelSongs.length,
     clear: counts.clear + counts.fc + counts.perfect,
     fail: counts.fail,
+    medal: medalCount,
     fullCombo: counts.fc,
     perfect: counts.perfect,
     records: state,
@@ -155,45 +254,198 @@ function buildAccountSyncPayload(level = currentLevel) {
 }
 
 function currentUserId() {
-  return localStorage.getItem("popn_clear_user_id") || "";
+  return authState.user?.id || "";
+}
+
+function preferredDisplayName(user) {
+  return (
+    user?.user_metadata?.display_name ||
+    user?.user_metadata?.name ||
+    user?.user_metadata?.nickname ||
+    user?.email?.split("@")[0] ||
+    "player"
+  );
+}
+
+function currentDisplayName() {
+  if (!authState.user) return "";
+  return authState.profile?.display_name || preferredDisplayName(authState.user);
 }
 
 function updateProfileName() {
-  const userId = currentUserId();
-  if (profileName) profileName.textContent = userId || "guest";
-  document.querySelector('[data-auth-action="logout"]')?.toggleAttribute("hidden", !userId);
+  const signedIn = Boolean(authState.user);
+  if (profileName) profileName.textContent = signedIn ? currentDisplayName() : "guest";
+  document
+    .querySelectorAll('[data-auth-action="login"], [data-auth-action="register"]')
+    .forEach((button) => button.toggleAttribute("hidden", signedIn));
+  document.querySelector('[data-auth-action="logout"]')?.toggleAttribute("hidden", !signedIn);
 }
 
-function promptForUserId(mode) {
-  const label = mode === "register" ? "注册账号" : "登录";
-  const suggested = currentUserId() || "";
-  const userId = window.prompt(`${label}：请输入要显示的玩家 ID`, suggested);
-  if (userId === null) return;
+async function loadOrCreateProfile(defaultName = "") {
+  const client = getSupabaseClient();
+  if (!client || !authState.user) return null;
+  const resolvedName = defaultName || preferredDisplayName(authState.user);
 
-  const cleanId = userId.trim();
-  if (!cleanId) {
-    window.alert("玩家 ID 不能为空。");
-    return;
+  const { data, error } = await client
+    .from("profiles")
+    .select("id, display_name")
+    .eq("id", authState.user.id)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (data) {
+    const fallbackName = authState.user.email?.split("@")[0];
+    const shouldRefreshName =
+      resolvedName &&
+      data.display_name !== resolvedName &&
+      (!data.display_name || data.display_name === fallbackName || data.display_name === "player");
+
+    if (shouldRefreshName) {
+      const { data: updatedProfile, error: updateError } = await client
+        .from("profiles")
+        .update({ display_name: resolvedName, updated_at: new Date().toISOString() })
+        .eq("id", authState.user.id)
+        .select("id, display_name")
+        .single();
+
+      if (updateError) throw updateError;
+      authState.profile = updatedProfile;
+      updateProfileName();
+      return updatedProfile;
+    }
+
+    authState.profile = data;
+    updateProfileName();
+    return data;
   }
 
-  localStorage.setItem("popn_clear_user_id", cleanId);
+  const displayName = resolvedName;
+  const { data: createdProfile, error: insertError } = await client
+    .from("profiles")
+    .insert({ id: authState.user.id, display_name: displayName })
+    .select("id, display_name")
+    .single();
+
+  if (insertError) throw insertError;
+  authState.profile = createdProfile;
+  updateProfileName();
+  return createdProfile;
+}
+
+async function syncAuthSession(session) {
+  authState.user = session?.user || null;
+  authState.profile = null;
+
+  if (authState.user) {
+    try {
+      await loadOrCreateProfile();
+    } catch (error) {
+      console.error(error);
+      authState.profile = null;
+    }
+  }
+
   updateProfileName();
 }
 
-function logoutUser() {
-  localStorage.removeItem("popn_clear_user_id");
+async function initializeAuth() {
+  const client = getSupabaseClient();
+  if (!client) {
+    updateProfileName();
+    return;
+  }
+
+  const { data, error } = await client.auth.getSession();
+  if (error) {
+    console.error(error);
+    updateProfileName();
+    return;
+  }
+
+  await syncAuthSession(data.session);
+  client.auth.onAuthStateChange((_event, session) => {
+    syncAuthSession(session);
+  });
+}
+
+async function loginWithEmail() {
+  const client = getSupabaseClient({ notify: true });
+  if (!client) return;
+
+  const email = authEmail.value.trim();
+  const password = authPassword.value;
+
+  const { error } = await client.auth.signInWithPassword({ email, password });
+  if (error) {
+    await showNotice(`登录失败：${error.message}`);
+    return;
+  }
+
+  closeAuthModal();
+  await showNotice("登录成功。");
+}
+
+async function registerWithEmail() {
+  const client = getSupabaseClient({ notify: true });
+  if (!client) return;
+
+  const email = authEmail.value.trim();
+  const password = authPassword.value;
+  const displayName = authDisplayName.value.trim() || email.split("@")[0];
+  const redirectUrl = new URL("./confirm.html", window.location.href);
+
+  const { data, error } = await client.auth.signUp({
+    email,
+    password,
+    options: {
+      emailRedirectTo: redirectUrl.toString(),
+      data: { display_name: displayName },
+    },
+  });
+
+  if (error) {
+    await showNotice(`注册失败：${error.message}`);
+    return;
+  }
+
+  closeAuthModal();
+  if (data.session) {
+    authState.user = data.user;
+    try {
+      await loadOrCreateProfile(displayName);
+    } catch (profileError) {
+      console.error(profileError);
+    }
+    await showNotice("注册成功，已登录。");
+  } else {
+    await showNotice("注册成功。请按邮箱确认后再登录。");
+  }
+}
+
+async function logoutUser() {
+  const client = getSupabaseClient({ notify: true });
+  if (!client) return;
+
+  const { error } = await client.auth.signOut();
+  if (error) {
+    await showNotice(`退出失败：${error.message}`);
+    return;
+  }
+
+  authState.user = null;
+  authState.profile = null;
   updateProfileName();
 }
 
 function saveCurrentLevelToLocalBackup() {
   localStorage.setItem(localBackupKey(), JSON.stringify(buildLevelSnapshot()));
-  window.alert(`Lv${currentLevel} 已保存到本机浏览器缓存。`);
+  showNotice(`Lv${currentLevel} 已保存到本机浏览器缓存。`);
 }
 
-function loadCurrentLevelFromLocalBackup() {
+async function loadCurrentLevelFromLocalBackup() {
   const raw = localStorage.getItem(localBackupKey());
   if (!raw) {
-    window.alert(`还没有找到 Lv${currentLevel} 的本地缓存备份。`);
+    await showNotice(`还没有找到 Lv${currentLevel} 的本地缓存备份。`);
     return;
   }
 
@@ -201,12 +453,12 @@ function loadCurrentLevelFromLocalBackup() {
     const payload = JSON.parse(raw);
     const records = payload.records;
     if (!records || typeof records !== "object" || Array.isArray(records)) {
-      window.alert("本地缓存数据格式不正确。");
+      await showNotice("本地缓存数据格式不正确。");
       return;
     }
 
     const exportedAt = payload.exportedAt ? `\n缓存时间：${new Date(payload.exportedAt).toLocaleString()}` : "";
-    const shouldLoad = window.confirm(`将从本机缓存恢复 Lv${currentLevel}，并覆盖当前 Lv${currentLevel} 数据。${exportedAt}`);
+    const shouldLoad = await showConfirm(`将从本机缓存恢复 Lv${currentLevel}，并覆盖当前 Lv${currentLevel} 数据。${exportedAt}`);
     if (!shouldLoad) return;
 
     stateByLevel[currentLevel] = records;
@@ -214,27 +466,129 @@ function loadCurrentLevelFromLocalBackup() {
     renderGroups();
     renderSongs();
   } catch (error) {
-    window.alert("读取本地缓存失败。");
+    await showNotice("读取本地缓存失败。");
     console.error(error);
   }
 }
 
-function showAccountSyncPlaceholder(action) {
-  const userId = currentUserId();
-  if (!userId) {
-    window.alert("请先点击 guest 登录或注册账号。");
-    setProfileMenuOpen(true);
-    return;
+function requireSignedIn() {
+  if (authState.user) return true;
+  showNotice("请先点击 guest 登录或注册账号。");
+  setProfileMenuOpen(true);
+  return false;
+}
+
+function buildActivityMessage(previousSummary, nextPayload, displayName) {
+  if (!previousSummary) {
+    return `${displayName} 首次提交了 Lv${nextPayload.level} 点灯记录，clear 总数 ${nextPayload.clear}。`;
   }
 
+  const clearDelta = nextPayload.clear - (previousSummary.clear_count || 0);
+  const fcDelta = nextPayload.fullCombo - (previousSummary.fc_count || 0);
+  const perfectDelta = nextPayload.perfect - (previousSummary.perfect_count || 0);
+  const deltas = [];
+
+  if (clearDelta > 0) deltas.push(`新增 clear ${clearDelta} 首`);
+  if (fcDelta > 0) deltas.push(`新增 full combo ${fcDelta} 首`);
+  if (perfectDelta > 0) deltas.push(`新增 perfect ${perfectDelta} 首`);
+
+  return `${displayName} 更新了 Lv${nextPayload.level} 数据，${deltas.length ? deltas.join("，") : `clear 总数 ${nextPayload.clear}`}。`;
+}
+
+async function saveCurrentLevelToAccount() {
+  const client = getSupabaseClient({ notify: true });
+  if (!client || !requireSignedIn()) return;
+
   const payload = buildAccountSyncPayload();
-  payload.userId = userId;
-  console.info("Account sync payload preview:", payload);
-  window.alert(
-    action === "save"
-      ? "上传至账号的资料结构已经准备好。接入登录和 Supabase 后，这里会把当前等级数据同步到账号。"
-      : "从账号加载的入口已经预留。接入登录和 Supabase 后，这里会读取账号里的等级数据。",
-  );
+  const userId = currentUserId();
+  const displayName = currentDisplayName() || "player";
+
+  try {
+    const { data: previousSummary, error: previousError } = await client
+      .from("level_summaries")
+      .select("clear_count, fc_count, perfect_count")
+      .eq("user_id", userId)
+      .eq("level", Number(payload.level))
+      .maybeSingle();
+
+    if (previousError) throw previousError;
+
+    const recordRow = {
+      user_id: userId,
+      level: Number(payload.level),
+      records: payload.records,
+      updated_at: payload.updatedAt,
+    };
+
+    const summaryRow = {
+      user_id: userId,
+      level: Number(payload.level),
+      display_name: displayName,
+      total_count: payload.total,
+      clear_count: payload.clear,
+      medal_count: payload.medal,
+      fc_count: payload.fullCombo,
+      perfect_count: payload.perfect,
+      updated_at: payload.updatedAt,
+    };
+
+    const { error: recordError } = await client.from("level_records").upsert(recordRow, {
+      onConflict: "user_id,level",
+    });
+    if (recordError) throw recordError;
+
+    const { error: summaryError } = await client.from("level_summaries").upsert(summaryRow, {
+      onConflict: "user_id,level",
+    });
+    if (summaryError) throw summaryError;
+
+    const { error: logError } = await client.from("activity_logs").insert({
+      user_id: userId,
+      display_name: displayName,
+      level: Number(payload.level),
+      message: buildActivityMessage(previousSummary, payload, displayName),
+    });
+    if (logError) throw logError;
+
+    await showNotice(`Lv${currentLevel} 已上传至账号。`);
+  } catch (error) {
+    console.error(error);
+    await showNotice(`上传失败：${error.message || "请检查 Supabase 表结构和 RLS policy。"}`);
+  }
+}
+
+async function loadCurrentLevelFromAccount() {
+  const client = getSupabaseClient({ notify: true });
+  if (!client || !requireSignedIn()) return;
+
+  try {
+    const { data, error } = await client
+      .from("level_records")
+      .select("records, updated_at")
+      .eq("user_id", currentUserId())
+      .eq("level", Number(currentLevel))
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (!data?.records) {
+      await showNotice(`账号里还没有 Lv${currentLevel} 的记录。`);
+      return;
+    }
+
+    const updatedAt = data.updated_at ? `\n账号更新时间：${new Date(data.updated_at).toLocaleString()}` : "";
+    const shouldLoad = await showConfirm(`将从账号加载 Lv${currentLevel}，并覆盖本机当前 Lv${currentLevel} 数据。${updatedAt}`);
+    if (!shouldLoad) return;
+
+    stateByLevel[currentLevel] = data.records;
+    saveStateForLevel(currentLevel);
+    renderGroups();
+    renderSongs();
+    await showNotice(`Lv${currentLevel} 已从账号加载。`);
+  } catch (error) {
+    console.error(error);
+    await showNotice(`加载失败：${error.message || "请检查 Supabase 表结构和 RLS policy。"}`);
+  }
 }
 
 function parseDiffText(text, level) {
@@ -717,7 +1071,7 @@ searchInput.addEventListener("input", () => {
 
 sortToggle.addEventListener("click", () => {
   sortAscending = !sortAscending;
-  sortLabel.textContent = sortAscending ? "Asc" : "Desc";
+  sortLabel.textContent = sortAscending ? "↑" : "↓";
   sortToggle.setAttribute("aria-pressed", String(!sortAscending));
   renderGroups();
   renderSongs();
@@ -742,7 +1096,7 @@ profileMenuToggle?.addEventListener("click", (event) => {
   setProfileMenuOpen(profileDropdown.hidden);
 });
 
-document.querySelector(".sync-actions")?.addEventListener("click", (event) => {
+document.querySelector(".sync-actions")?.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
 
@@ -751,36 +1105,57 @@ document.querySelector(".sync-actions")?.addEventListener("click", (event) => {
   }
 
   if (button.dataset.action === "save-account") {
-    showAccountSyncPlaceholder("save");
+    await saveCurrentLevelToAccount();
   }
 
   if (button.dataset.action === "load-local") {
-    loadCurrentLevelFromLocalBackup();
+    await loadCurrentLevelFromLocalBackup();
   }
 
   if (button.dataset.action === "load-account") {
-    showAccountSyncPlaceholder("load");
+    await loadCurrentLevelFromAccount();
   }
 });
 
-profileDropdown?.addEventListener("click", (event) => {
+profileDropdown?.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-auth-action]");
   if (!button) return;
 
   setProfileMenuOpen(false);
 
   if (button.dataset.authAction === "login") {
-    promptForUserId("login");
+    openAuthModal("login");
   }
 
   if (button.dataset.authAction === "register") {
-    promptForUserId("register");
+    openAuthModal("register");
   }
 
   if (button.dataset.authAction === "logout") {
-    logoutUser();
+    await logoutUser();
   }
 });
+
+authForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  if (authMode === "register") {
+    await registerWithEmail();
+  } else {
+    await loginWithEmail();
+  }
+});
+
+document.querySelectorAll('[data-modal-close="auth"]').forEach((button) => {
+  button.addEventListener("click", closeAuthModal);
+});
+
+document.querySelectorAll('[data-modal-close="message"]').forEach((button) => {
+  button.addEventListener("click", () => closeMessageModal(false));
+});
+
+messageOk?.addEventListener("click", () => closeMessageModal(true));
+messageCancel?.addEventListener("click", () => closeMessageModal(false));
 
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".profile-menu")) {
@@ -791,6 +1166,8 @@ document.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     setProfileMenuOpen(false);
+    if (!authModal?.hidden) closeAuthModal();
+    if (!messageModal?.hidden) closeMessageModal(false);
   }
 });
 
@@ -808,3 +1185,13 @@ loadLevel(currentLevel).catch((error) => {
 });
 
 updateProfileName();
+initializeAuth();
+if (new URLSearchParams(window.location.search).get("auth") === "confirmed") {
+  showNotice("邮箱确认完成，可以登录并提交数据了。", "注册完成");
+  const cleanUrl = new URL(window.location.href);
+  cleanUrl.searchParams.delete("auth");
+  window.history.replaceState(null, "", `${cleanUrl.pathname}${cleanUrl.search}`);
+}
+if (initialAuthMode === "login" || initialAuthMode === "register") {
+  openAuthModal(initialAuthMode);
+}
