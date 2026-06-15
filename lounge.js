@@ -1,6 +1,5 @@
 const LOUNGE_LEVELS = ["46", "47", "48", "49", "50"];
 const LOUNGE_CONFIG = window.POPN_SUPABASE || {};
-const WEEKDAY_LABELS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
 let loungeSupabase = null;
 let activeLoungeLevel = "46";
@@ -9,7 +8,7 @@ const rankTableBody = document.querySelector("#rank-table-body");
 const activityBox = document.querySelector("#activity-box");
 const loungeProfileName = document.querySelector("#lounge-profile-name");
 const communitySubmit = document.querySelector("#community-submit");
-const uploadHeatmap = document.querySelector("#upload-heatmap");
+const communityHide = document.querySelector("#community-hide");
 const profileMenuToggle = document.querySelector("#profile-menu-toggle");
 const profileDropdown = document.querySelector("#profile-dropdown");
 const authModal = document.querySelector("#auth-modal");
@@ -29,10 +28,13 @@ const messageCancel = document.querySelector("#message-cancel");
 
 let authMode = "login";
 let messageResolver = null;
+let loungeLoadToken = 0;
 const loungeAuthState = {
   user: null,
   profile: null,
 };
+const NETWORK_RETRY_MESSAGE = "网络加载失败，请检查网络，稍后重试。";
+const REGISTER_NETWORK_RETRY_MESSAGE = "注册网络加载失败，请检查网络，稍后重试。";
 
 function getLoungeSupabase() {
   if (loungeSupabase) return loungeSupabase;
@@ -192,7 +194,7 @@ async function syncAuthSession(session) {
 async function loginWithEmail() {
   const client = getLoungeSupabase();
   if (!client) {
-    await showNotice("Supabase 还没有配置完成。");
+    await showNotice(NETWORK_RETRY_MESSAGE);
     return;
   }
 
@@ -213,7 +215,7 @@ async function loginWithEmail() {
 async function registerWithEmail() {
   const client = getLoungeSupabase();
   if (!client) {
-    await showNotice("Supabase 还没有配置完成。");
+    await showNotice(REGISTER_NETWORK_RETRY_MESSAGE);
     return;
   }
 
@@ -230,7 +232,7 @@ async function registerWithEmail() {
   });
 
   if (error) {
-    await showNotice(`注册失败：${error.message}`);
+    await showNotice(REGISTER_NETWORK_RETRY_MESSAGE);
     return;
   }
 
@@ -270,26 +272,6 @@ function loadLocalState(level) {
     console.error(error);
     return {};
   }
-}
-
-function localDateKey(value) {
-  const date = new Date(value);
-  const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return shifted.toISOString().slice(0, 10);
-}
-
-function startOfSundayWeek(value) {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() - date.getDay());
-  return date;
-}
-
-function formatShortDate(value) {
-  return value.toLocaleDateString("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-  });
 }
 
 function parseSongIds(text, level) {
@@ -369,74 +351,10 @@ function requireSignedIn() {
   return false;
 }
 
-function renderUploadHeatmap(rows) {
-  if (!uploadHeatmap) return;
-
-  const countsByDate = new Map();
-  rows.forEach((row) => {
-    const key = localDateKey(row.created_at);
-    countsByDate.set(key, (countsByDate.get(key) || 0) + 1);
-  });
-
-  const startDate = startOfSundayWeek(new Date());
-  const endDate = new Date(startDate);
-  endDate.setDate(startDate.getDate() + 6);
-  const cells = [];
-
-  for (let day = 0; day < 7; day += 1) {
-    const date = new Date(startDate);
-    date.setDate(startDate.getDate() + day);
-    const key = localDateKey(date);
-    cells.push({ date, day, count: countsByDate.get(key) || 0 });
-  }
-
-  const maxCount = Math.max(1, ...cells.map((cell) => cell.count));
-  const activeDays = cells.filter((cell) => cell.count > 0);
-  const totalCount = cells.reduce((total, cell) => total + cell.count, 0);
-
-  uploadHeatmap.replaceChildren();
-
-  const header = document.createElement("div");
-  header.className = "heatmap-head";
-  header.innerHTML = `<strong>本周贡献度</strong><span>${formatShortDate(startDate)} - ${formatShortDate(endDate)}</span>`;
-
-  const cellGrid = document.createElement("div");
-  cellGrid.className = "heatmap-week-grid";
-  cells.forEach((cell) => {
-    const dayColumn = document.createElement("div");
-    dayColumn.className = "heatmap-day";
-
-    const tile = document.createElement("span");
-    tile.className = "heatmap-cell";
-    tile.title = `${cell.date.toLocaleDateString("zh-CN")}：${cell.count} 次上传`;
-
-    if (cell.count > 0) {
-      const level = Math.min(4, Math.max(1, Math.ceil((cell.count / maxCount) * 4)));
-      tile.classList.add(`level-${level}`);
-    }
-
-    const dateLabel = document.createElement("span");
-    dateLabel.className = "heatmap-date";
-    dateLabel.innerHTML = `<span>${WEEKDAY_LABELS[cell.day]}</span><b>${formatShortDate(cell.date)}</b>`;
-
-    dayColumn.append(tile, dateLabel);
-    cellGrid.append(dayColumn);
-  });
-
-  const stats = document.createElement("div");
-  stats.className = "heatmap-stats";
-  stats.innerHTML = `
-    <span>本周贡献：<b>${totalCount}</b> 次</span>
-    <span>活跃天数：<b>${activeDays.length}</b> 日</span>
-  `;
-
-  uploadHeatmap.append(header, cellGrid, stats);
-}
-
 async function submitAllLocalRecords() {
   const client = getLoungeSupabase();
   if (!client) {
-    await showNotice("Supabase 还没有配置完成。");
+    await showNotice(NETWORK_RETRY_MESSAGE);
     return;
   }
   if (!requireSignedIn()) return;
@@ -517,10 +435,45 @@ async function submitAllLocalRecords() {
     );
   } catch (error) {
     console.error(error);
-    await showNotice(`提交失败：${error.message || "请检查 Supabase 表结构和 RLS policy。"}`);
+    await showNotice("提交失败，请检查网络后稍后重试。");
   } finally {
     communitySubmit.disabled = false;
     communitySubmit.textContent = "提交当前数据";
+  }
+}
+
+async function hideOwnCommunityData() {
+  const client = getLoungeSupabase();
+  if (!client) {
+    await showNotice(NETWORK_RETRY_MESSAGE);
+    return;
+  }
+  if (!requireSignedIn()) return;
+
+  const confirmed = await showConfirm(
+    "隐藏自己提交的所有成绩，从交流室中消失，假如想要恢复，请再点击 提交当前数据",
+  );
+  if (!confirmed) return;
+
+  communityHide.disabled = true;
+  communityHide.textContent = "隐藏中...";
+
+  try {
+    const userId = loungeAuthState.user.id;
+    const { error: summaryError } = await client.from("level_summaries").delete().eq("user_id", userId);
+    if (summaryError) throw summaryError;
+
+    const { error: activityError } = await client.from("activity_logs").delete().eq("user_id", userId);
+    if (activityError) throw activityError;
+
+    await loadLoungeData();
+    await showNotice("已隐藏你在交流室提交的数据。", "隐藏完成");
+  } catch (error) {
+    console.error(error);
+    await showNotice("隐藏失败，请检查网络后稍后重试。");
+  } finally {
+    communityHide.disabled = false;
+    communityHide.textContent = "隐藏我的数据";
   }
 }
 
@@ -548,6 +501,16 @@ function renderEmptyRank(message) {
   const cell = document.createElement("td");
   cell.colSpan = 9;
   cell.textContent = message;
+  row.append(cell);
+  rankTableBody.append(row);
+}
+
+function renderLoadingRank() {
+  rankTableBody.replaceChildren();
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.colSpan = 9;
+  cell.innerHTML = `<span class="loading-line"><span class="loading-spinner"></span>加载中...</span>`;
   row.append(cell);
   rankTableBody.append(row);
 }
@@ -602,16 +565,25 @@ function renderActivityRows(rows) {
   });
 }
 
+function renderActivityLoading() {
+  activityBox.replaceChildren();
+  const item = document.createElement("p");
+  item.className = "activity-loading";
+  item.innerHTML = `<span class="loading-line"><span class="loading-spinner"></span>加载中...</span>`;
+  activityBox.append(item);
+}
+
 async function loadLoungeData() {
+  const loadToken = ++loungeLoadToken;
+  renderLoadingRank();
+  renderActivityLoading();
+
   const client = getLoungeSupabase();
   if (!client) {
     renderEmptyRank(`Lv${activeLoungeLevel} 还没有玩家提交数据。`);
     renderActivityRows([]);
-    renderUploadHeatmap([]);
     return;
   }
-
-  const heatmapStart = startOfSundayWeek(new Date());
 
   const { data: summaries, error: summaryError } = await client
     .from("level_summaries")
@@ -622,9 +594,11 @@ async function loadLoungeData() {
     .order("perfect_count", { ascending: false })
     .limit(50);
 
+  if (loadToken !== loungeLoadToken) return;
+
   if (summaryError) {
     console.error(summaryError);
-    renderEmptyRank("读取排行榜失败，请检查 Supabase RLS policy。");
+    renderEmptyRank("读取排行榜失败，请检查网络后稍后重试。");
   } else {
     renderRankRows(summaries || []);
   }
@@ -635,24 +609,13 @@ async function loadLoungeData() {
     .order("created_at", { ascending: false })
     .limit(50);
 
+  if (loadToken !== loungeLoadToken) return;
+
   if (activityError) {
     console.error(activityError);
+    renderActivityRows([]);
   } else {
     renderActivityRows(activities || []);
-  }
-
-  const { data: heatmapActivities, error: heatmapError } = await client
-    .from("activity_logs")
-    .select("created_at")
-    .gte("created_at", heatmapStart.toISOString())
-    .order("created_at", { ascending: false })
-    .limit(1000);
-
-  if (heatmapError) {
-    console.error(heatmapError);
-    renderUploadHeatmap([]);
-  } else {
-    renderUploadHeatmap(heatmapActivities || []);
   }
 }
 
@@ -726,6 +689,7 @@ messageOk?.addEventListener("click", () => closeMessageModal(true));
 messageCancel?.addEventListener("click", () => closeMessageModal(false));
 
 communitySubmit?.addEventListener("click", submitAllLocalRecords);
+communityHide?.addEventListener("click", hideOwnCommunityData);
 
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".profile-menu")) {

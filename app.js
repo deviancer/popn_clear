@@ -124,17 +124,19 @@ const authState = {
   user: null,
   profile: null,
 };
+const NETWORK_RETRY_MESSAGE = "网络加载失败，请检查网络，稍后重试。";
+const REGISTER_NETWORK_RETRY_MESSAGE = "注册网络加载失败，请检查网络，稍后重试。";
 
 function getSupabaseClient({ notify = false } = {}) {
   if (supabaseClient) return supabaseClient;
 
   if (!SUPABASE_CONFIG.url || !SUPABASE_CONFIG.key) {
-    if (notify) showNotice("Supabase 还没有配置 Project URL。请先填写 supabase-config.js 里的 url。");
+    if (notify) showNotice(NETWORK_RETRY_MESSAGE);
     return null;
   }
 
   if (!window.supabase?.createClient) {
-    if (notify) showNotice("Supabase SDK 没有加载成功，请检查网络或 CDN。");
+    if (notify) showNotice(NETWORK_RETRY_MESSAGE);
     return null;
   }
 
@@ -386,8 +388,11 @@ async function loginWithEmail() {
 }
 
 async function registerWithEmail() {
-  const client = getSupabaseClient({ notify: true });
-  if (!client) return;
+  const client = getSupabaseClient();
+  if (!client) {
+    await showNotice(REGISTER_NETWORK_RETRY_MESSAGE);
+    return;
+  }
 
   const email = authEmail.value.trim();
   const password = authPassword.value;
@@ -404,7 +409,7 @@ async function registerWithEmail() {
   });
 
   if (error) {
-    await showNotice(`注册失败：${error.message}`);
+    await showNotice(REGISTER_NETWORK_RETRY_MESSAGE);
     return;
   }
 
@@ -553,7 +558,7 @@ async function saveCurrentLevelToAccount() {
     await showNotice(`Lv${currentLevel} 已上传至账号。`);
   } catch (error) {
     console.error(error);
-    await showNotice(`上传失败：${error.message || "请检查 Supabase 表结构和 RLS policy。"}`);
+    await showNotice("上传失败，请检查网络后稍后重试。");
   }
 }
 
@@ -587,7 +592,7 @@ async function loadCurrentLevelFromAccount() {
     await showNotice(`Lv${currentLevel} 已从账号加载。`);
   } catch (error) {
     console.error(error);
-    await showNotice(`加载失败：${error.message || "请检查 Supabase 表结构和 RLS policy。"}`);
+    await showNotice("加载失败，请检查网络后稍后重试。");
   }
 }
 
@@ -633,19 +638,21 @@ function parseDifficultyGroup(difficulty) {
   }
 
   const major = MAJOR_ORDER.find((name) => trimmed.startsWith(name)) || "未定";
-  const value = Number((trimmed.match(/([+-]\d+(?:\.\d+)?)/) || [])[1]);
+  const rawValue = (trimmed.match(/([+-]\d+(?:\.\d+)?)/) || [])[1];
+  const value = Number(rawValue);
   if (!Number.isFinite(value)) {
     return { major, minor: "未定", minorValue: Number.POSITIVE_INFINITY };
   }
 
   const truncated = Math.trunc(value * 10) / 10;
-  const minor = `${major}${formatSignedDecimal(truncated)}`;
-  return { major, minor, minorValue: truncated };
+  const isNegativeZeroBucket = truncated === 0 && rawValue?.startsWith("-");
+  const minor = `${major}${formatSignedDecimal(truncated, isNegativeZeroBucket)}`;
+  return { major, minor, minorValue: isNegativeZeroBucket ? -0.01 : truncated };
 }
 
-function formatSignedDecimal(value) {
+function formatSignedDecimal(value, forceNegative = false) {
   const fixed = Math.abs(value).toFixed(1);
-  return `${value >= 0 ? "+" : "-"}${fixed}`;
+  return `${forceNegative || value < 0 ? "-" : "+"}${fixed}`;
 }
 
 function orderedMajors() {
@@ -714,6 +721,8 @@ function applyCardStatus(card, record) {
   });
   const className = statusClass(record);
   if (className) card.classList.add(className);
+  const unrecordedBadge = card.querySelector(".unrecorded-badge");
+  if (unrecordedBadge) unrecordedBadge.hidden = Boolean(record.clear);
 }
 
 function updateIcon(img, value) {
@@ -1012,6 +1021,7 @@ function renderSongs() {
     const majorKey = rightSectionKey("major", major);
     const majorCollapsed = collapsedRightSections.has(majorKey);
     const majorSection = makeSection(major, majorVisible.length, "major-section", majorKey);
+    const majorList = majorSection.querySelector(".song-list");
     fragment.append(majorSection);
     if (majorCollapsed) return;
 
@@ -1025,7 +1035,7 @@ function renderSongs() {
       if (!collapsedRightSections.has(rightSectionKey("minor", major, minor))) {
         minorSongs.forEach((song) => list.append(renderCard(song)));
       }
-      fragment.append(minorSection);
+      majorList.append(minorSection);
     });
   });
 
@@ -1040,8 +1050,8 @@ function updateLevelNav() {
     button.classList.toggle("muted", !isActiveLevel);
   });
   currentLevelLabel.textContent = currentLevel;
-  pageTitle.textContent = `Lv${currentLevel} Record Sheet`;
-  document.title = `popn_clear - Lv${currentLevel}`;
+  pageTitle.textContent = `Lv${currentLevel} 难度表`;
+  document.title = `popn_clear - Lv${currentLevel} 难度表`;
 }
 
 async function loadLevel(level) {
