@@ -1,11 +1,29 @@
 const LOUNGE_LEVELS = ["46", "47", "48", "49", "50"];
 const LOUNGE_CONFIG = window.POPN_SUPABASE || {};
+const LOUNGE_MAJOR_ORDER = ["入門", "逆詐称", "弱", "中", "強", "詐称", "別格", "未定"];
+const DETAIL_KIND_ORDER = {
+  perfect: 0,
+  fc: 1,
+  clear: 2,
+  fail: 3,
+  blank: 4,
+};
+const DETAIL_DIFFICULTY_ORDER = ["詐称", "強", "中", "弱", "逆詐称", "入門", "別格", "未定"];
+const DETAIL_KIND_LABELS = {
+  fail: "fail",
+  clear: "clear",
+  fc: "full combo",
+  perfect: "perfect",
+  blank: "未记录",
+};
 
 let loungeSupabase = null;
 let activeLoungeLevel = "46";
+const songCatalogByLevel = {};
 
 const rankTableBody = document.querySelector("#rank-table-body");
 const activityBox = document.querySelector("#activity-box");
+const playerDetailPanel = document.querySelector("#player-detail-panel");
 const loungeProfileName = document.querySelector("#lounge-profile-name");
 const communitySubmit = document.querySelector("#community-submit");
 const communityHide = document.querySelector("#community-hide");
@@ -274,7 +292,7 @@ function loadLocalState(level) {
   }
 }
 
-function parseSongIds(text, level) {
+function parseSongCatalog(text, level) {
   return text
     .split(/\r?\n/)
     .map((line) => line.trimEnd())
@@ -282,16 +300,41 @@ function parseSongIds(text, level) {
     .map((line, index) => {
       const columns = line.split("\t");
       const hasLicensedColumn = columns.length >= 8;
-      const genre = hasLicensedColumn ? columns[2] : columns[1];
-      const title = hasLicensedColumn ? columns[3] : columns[2];
-      return `${level}-${index}-${(genre || title || "").trim()}`;
+      const [versionRaw, licensedRaw, genre, title, bpm, time, notesRaw, difficultyRaw] = hasLicensedColumn
+        ? columns
+        : [columns[0], "", columns[1], columns[2], columns[3], columns[4], columns[5], columns[6]];
+      const difficulty = (difficultyRaw || "").trim() || "未定";
+      return {
+        id: `${level}-${index}-${(genre || title || "").trim()}`,
+        level,
+        version: cleanBracket(versionRaw),
+        licensed: /\[版\]/.test(licensedRaw || ""),
+        genre: (genre || "").trim(),
+        title: (title || "").trim(),
+        bpm: (bpm || "").trim(),
+        time: (time || "").trim(),
+        notes: Number((notesRaw || "").replace(/[^\d]/g, "")) || 0,
+        difficulty,
+        group: parseDifficultyMajor(difficulty),
+      };
     });
 }
 
-async function loadSongIds(level) {
+function cleanBracket(value = "") {
+  return value.trim().replace(/^\[/, "").replace(/\]$/, "");
+}
+
+function parseDifficultyMajor(difficulty) {
+  const trimmed = difficulty.trim();
+  return LOUNGE_MAJOR_ORDER.find((name) => trimmed.startsWith(name)) || "未定";
+}
+
+async function loadSongCatalog(level) {
+  if (songCatalogByLevel[level]) return songCatalogByLevel[level];
   const response = await fetch(`./diff/${level}.txt`, { cache: "no-store" });
   if (!response.ok) throw new Error(`diff/${level}.txt 读取失败`);
-  return parseSongIds(await response.text(), level);
+  songCatalogByLevel[level] = parseSongCatalog(await response.text(), level);
+  return songCatalogByLevel[level];
 }
 
 function normalizeRecord(record) {
@@ -305,19 +348,43 @@ function recordKind(record) {
   return "clear";
 }
 
-function buildLevelPayload(level, songIds) {
+function detailDifficultyRank(group) {
+  const rank = DETAIL_DIFFICULTY_ORDER.indexOf(group);
+  return rank === -1 ? DETAIL_DIFFICULTY_ORDER.length : rank;
+}
+
+function compareDetailSongs(records) {
+  return (a, b) => {
+    const recordA = { ...(records[a.id] || {}) };
+    const recordB = { ...(records[b.id] || {}) };
+    normalizeRecord(recordA);
+    normalizeRecord(recordB);
+
+    const kindRank =
+      (DETAIL_KIND_ORDER[recordKind(recordA)] ?? DETAIL_KIND_ORDER.blank) -
+      (DETAIL_KIND_ORDER[recordKind(recordB)] ?? DETAIL_KIND_ORDER.blank);
+    if (kindRank) return kindRank;
+
+    const groupRank = detailDifficultyRank(a.group) - detailDifficultyRank(b.group);
+    if (groupRank) return groupRank;
+
+    return (b.notes || 0) - (a.notes || 0) || a.title.localeCompare(b.title, "ja");
+  };
+}
+
+function buildLevelPayload(level, songCatalog) {
   const records = loadLocalState(level);
   const counts = { fail: 0, clear: 0, fc: 0, perfect: 0, blank: 0 };
 
-  songIds.forEach((id) => {
-    const record = records[id] || {};
+  songCatalog.forEach((song) => {
+    const record = records[song.id] || {};
     normalizeRecord(record);
     counts[recordKind(record)] += 1;
   });
 
   return {
     level,
-    total: songIds.length,
+    total: songCatalog.length,
     clear: counts.clear + counts.fc + counts.perfect,
     fail: counts.fail,
     fullCombo: counts.fc,
@@ -327,9 +394,33 @@ function buildLevelPayload(level, songIds) {
   };
 }
 
-function buildActivityMessage(previousSummary, payload, displayName) {
+function isClearKind(kind) {
+  return kind === "clear" || kind === "fc" || kind === "perfect";
+}
+
+function clearSongChanges(previousRecords = {}, nextRecords = {}, songCatalog = []) {
+  return songCatalog.filter((song) => {
+    const previousRecord = previousRecords[song.id] || {};
+    const nextRecord = nextRecords[song.id] || {};
+    normalizeRecord(previousRecord);
+    normalizeRecord(nextRecord);
+    return !isClearKind(recordKind(previousRecord)) && isClearKind(recordKind(nextRecord));
+  });
+}
+
+function formatClearSongPreview(clearSongs) {
+  if (!clearSongs.length) return "";
+  const preview = clearSongs.slice(0, 5).map((song) => `${song.genre} / ${song.title}`);
+  const rest = clearSongs.length - preview.length;
+  return rest > 0 ? `${preview.join("、")}，另 ${rest} 首` : preview.join("、");
+}
+
+function buildActivityMessageV2(previousSummary, payload, displayName, clearSongs = []) {
+  const clearPreview = formatClearSongPreview(clearSongs);
+  const suffix = clearPreview ? `\n本次 clear：${clearPreview}` : "";
+
   if (!previousSummary) {
-    return `${displayName} 首次提交了 Lv${payload.level} 点灯记录，clear 总数 ${payload.clear}。`;
+    return `${displayName} 首次提交了 Lv${payload.level} 点灯记录，clear 总数 ${payload.clear}。${suffix}`;
   }
 
   const clearDelta = payload.clear - (previousSummary.clear_count || 0);
@@ -341,7 +432,7 @@ function buildActivityMessage(previousSummary, payload, displayName) {
   if (fcDelta > 0) deltas.push(`新增 full combo ${fcDelta} 首`);
   if (perfectDelta > 0) deltas.push(`新增 perfect ${perfectDelta} 首`);
 
-  return `${displayName} 更新了 Lv${payload.level} 数据，${deltas.length ? deltas.join("，") : `clear 总数 ${payload.clear}`}。`;
+  return `${displayName} 更新了 Lv${payload.level} 数据，${deltas.length ? deltas.join("，") : `clear 总数 ${payload.clear}`}。${suffix}`;
 }
 
 function requireSignedIn() {
@@ -375,7 +466,8 @@ async function submitAllLocalRecords() {
     let totalPerfectDelta = 0;
 
     for (const level of LOUNGE_LEVELS) {
-      const payload = buildLevelPayload(level, await loadSongIds(level));
+      const songCatalog = await loadSongCatalog(level);
+      const payload = buildLevelPayload(level, songCatalog);
       const { data: previousSummary, error: previousError } = await client
         .from("level_summaries")
         .select("clear_count, fc_count, perfect_count")
@@ -384,6 +476,17 @@ async function submitAllLocalRecords() {
         .maybeSingle();
 
       if (previousError) throw previousError;
+
+      const { data: previousRecordRow, error: previousRecordError } = await client
+        .from("level_records")
+        .select("records")
+        .eq("user_id", userId)
+        .eq("level", Number(level))
+        .maybeSingle();
+
+      if (previousRecordError) throw previousRecordError;
+
+      const clearSongs = clearSongChanges(previousRecordRow?.records || {}, payload.records, songCatalog);
 
       totalClearDelta += Math.max(0, payload.clear - (previousSummary?.clear_count || 0));
       totalFcDelta += Math.max(0, payload.fullCombo - (previousSummary?.fc_count || 0));
@@ -405,6 +508,7 @@ async function submitAllLocalRecords() {
         level: Number(level),
         display_name: displayName,
         total_count: payload.total,
+        fail_count: payload.fail,
         clear_count: payload.clear,
         medal_count: Object.values(payload.records).filter((record) => record?.medal).length,
         fc_count: payload.fullCombo,
@@ -416,7 +520,7 @@ async function submitAllLocalRecords() {
         user_id: userId,
         display_name: displayName,
         level: Number(level),
-        message: buildActivityMessage(previousSummary, payload, displayName),
+        message: buildActivityMessageV2(previousSummary, payload, displayName, clearSongs),
       });
     }
 
@@ -495,11 +599,175 @@ function rateClass(rate) {
   return "low";
 }
 
+function detailCounts(records, songCatalog) {
+  const counts = { fail: 0, clear: 0, fc: 0, perfect: 0, blank: 0 };
+  songCatalog.forEach((song) => {
+    const record = records[song.id] || {};
+    normalizeRecord(record);
+    counts[recordKind(record)] += 1;
+  });
+  return counts;
+}
+
+function renderPlayerDetailEmpty(message = "点击排行榜里的玩家，可以查看这个 Lv 的详细攻略情况。") {
+  if (!playerDetailPanel) return;
+  playerDetailPanel.replaceChildren();
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "player dossier";
+  const title = document.createElement("h2");
+  title.textContent = "玩家档案";
+  const empty = document.createElement("p");
+  empty.className = "detail-empty";
+  empty.textContent = message;
+  playerDetailPanel.append(eyebrow, title, empty);
+}
+
+function renderPlayerDetailLoading(row) {
+  if (!playerDetailPanel) return;
+  playerDetailPanel.replaceChildren();
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = `Lv${row.level} dossier`;
+  const title = document.createElement("h2");
+  title.textContent = row.display_name || "player";
+  const loading = document.createElement("p");
+  loading.className = "detail-empty";
+  loading.innerHTML = `<span class="loading-line"><span class="loading-spinner"></span>加载玩家档案...</span>`;
+  playerDetailPanel.append(eyebrow, title, loading);
+}
+
+function appendDetailMetric(parent, label, value) {
+  const item = document.createElement("div");
+  const strong = document.createElement("strong");
+  const span = document.createElement("span");
+  strong.textContent = value;
+  span.textContent = label;
+  item.append(strong, span);
+  parent.append(item);
+}
+
+function createDetailSongRow(song, record) {
+  const normalized = { ...(record || {}) };
+  normalizeRecord(normalized);
+  const kind = recordKind(normalized);
+  const row = document.createElement("article");
+  row.className = `detail-song detail-${kind}`;
+
+  const marker = document.createElement("span");
+  marker.className = "detail-song-kind";
+  marker.textContent = DETAIL_KIND_LABELS[kind] || kind;
+
+  const body = document.createElement("div");
+  body.className = "detail-song-body";
+  const title = document.createElement("strong");
+  title.textContent = `${song.genre} / ${song.title}`;
+  const meta = document.createElement("span");
+  meta.textContent = `${song.difficulty} · ${song.notes || "-"} notes`;
+  body.append(title, meta);
+
+  const extras = document.createElement("div");
+  extras.className = "detail-song-extras";
+  if (normalized.medal) {
+    const medal = document.createElement("img");
+    medal.src = `./icon/${normalized.medal}.png`;
+    medal.alt = normalized.medal;
+    extras.append(medal);
+  }
+  if (normalized.score) {
+    const score = document.createElement("span");
+    score.textContent = normalized.score;
+    extras.append(score);
+  }
+  if (normalized.scoreRank) {
+    const rank = document.createElement("img");
+    rank.src = `./icon/${normalized.scoreRank === "s_7_failed" ? "s_7" : normalized.scoreRank}.png`;
+    rank.alt = normalized.scoreRank;
+    extras.append(rank);
+  }
+
+  row.append(marker, body, extras);
+  return row;
+}
+
+function renderPlayerDetail(row, records, songCatalog) {
+  if (!playerDetailPanel) return;
+  const counts = detailCounts(records, songCatalog);
+  const cleared = counts.clear + counts.fc + counts.perfect;
+  const clearRate = songCatalog.length ? (cleared / songCatalog.length) * 100 : 0;
+
+  playerDetailPanel.replaceChildren();
+
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = `Lv${row.level} player dossier`;
+  const title = document.createElement("h2");
+  title.textContent = row.display_name || "player";
+  const updated = document.createElement("p");
+  updated.className = "detail-updated";
+  updated.textContent = `更新时间：${formatDateTime(row.updated_at)}`;
+
+  const summary = document.createElement("div");
+  summary.className = "detail-summary";
+  const meter = document.createElement("div");
+  meter.className = "detail-meter";
+  const meterFill = document.createElement("span");
+  meterFill.style.width = `${clearRate}%`;
+  meter.append(meterFill);
+  const metrics = document.createElement("div");
+  metrics.className = "detail-metrics";
+  appendDetailMetric(metrics, "clear", `${cleared}/${songCatalog.length}`);
+  appendDetailMetric(metrics, "fail", counts.fail);
+  appendDetailMetric(metrics, "fc", counts.fc);
+  appendDetailMetric(metrics, "perfect", counts.perfect);
+  summary.append(meter, metrics);
+
+  const list = document.createElement("div");
+  list.className = "detail-song-list";
+  [...songCatalog].sort(compareDetailSongs(records)).forEach((song) => {
+    list.append(createDetailSongRow(song, records[song.id] || {}));
+  });
+
+  playerDetailPanel.append(eyebrow, title, updated, summary, list);
+}
+
+async function showPlayerDetail(row) {
+  const client = getLoungeSupabase();
+  if (!client || !row?.user_id) {
+    renderPlayerDetailEmpty("暂时读取不到这位玩家的详细数据。");
+    return;
+  }
+
+  renderPlayerDetailLoading(row);
+
+  try {
+    const [songCatalog, recordResult] = await Promise.all([
+      loadSongCatalog(String(row.level)),
+      client
+        .from("level_records")
+        .select("records, updated_at")
+        .eq("user_id", row.user_id)
+        .eq("level", Number(row.level))
+        .maybeSingle(),
+    ]);
+
+    if (recordResult.error) throw recordResult.error;
+    renderPlayerDetail(
+      { ...row, updated_at: recordResult.data?.updated_at || row.updated_at },
+      recordResult.data?.records || {},
+      songCatalog,
+    );
+  } catch (error) {
+    console.error(error);
+    renderPlayerDetailEmpty("读取玩家档案失败，请稍后重试。");
+  }
+}
+
 function renderEmptyRank(message) {
   rankTableBody.replaceChildren();
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 9;
+  cell.colSpan = 10;
   cell.textContent = message;
   row.append(cell);
   rankTableBody.append(row);
@@ -509,7 +777,7 @@ function renderLoadingRank() {
   rankTableBody.replaceChildren();
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 9;
+  cell.colSpan = 10;
   cell.innerHTML = `<span class="loading-line"><span class="loading-spinner"></span>加载中...</span>`;
   row.append(cell);
   rankTableBody.append(row);
@@ -526,18 +794,32 @@ function renderRankRows(rows) {
   rows.forEach((row) => {
     const clearRate = row.total_count ? (row.clear_count / row.total_count) * 100 : 0;
     const element = document.createElement("tr");
+    element.className = "rank-row";
     element.innerHTML = `
       <td><strong></strong></td>
       <td>${row.level}</td>
       <td>${row.total_count}</td>
+      <td>${row.fail_count || 0}</td>
       <td>${row.clear_count}</td>
-      <td>${row.medal_count}</td>
       <td>${row.fc_count}</td>
       <td>${row.perfect_count}</td>
       <td><span class="rate-pill ${rateClass(clearRate)}">${clearRate.toFixed(1)}%</span></td>
       <td>${formatDateTime(row.updated_at)}</td>
+      <td><button class="detail-button" type="button">查看</button></td>
     `;
     element.querySelector("strong").textContent = row.display_name || "player";
+    element.addEventListener("click", (event) => {
+      if (event.target.closest("button")) event.stopPropagation();
+      rankTableBody.querySelectorAll(".rank-row").forEach((item) => item.classList.remove("selected"));
+      element.classList.add("selected");
+      showPlayerDetail(row);
+    });
+    element.querySelector(".detail-button").addEventListener("click", (event) => {
+      event.stopPropagation();
+      rankTableBody.querySelectorAll(".rank-row").forEach((item) => item.classList.remove("selected"));
+      element.classList.add("selected");
+      showPlayerDetail(row);
+    });
     rankTableBody.append(element);
   });
 }
@@ -559,8 +841,15 @@ function renderActivityRows(rows) {
     const cleanedMessage = message.startsWith(row.display_name || "")
       ? message.slice((row.display_name || "").length).trim()
       : message;
+    const messageLines = cleanedMessage.split("\n").filter(Boolean);
     name.textContent = row.display_name || "player";
-    item.append(name, ` 在 ${formatDateTime(row.created_at)} ${cleanedMessage}`);
+    item.append(name, ` 在 ${formatDateTime(row.created_at)} ${messageLines.shift() || ""}`);
+    messageLines.forEach((line) => {
+      const detail = document.createElement("span");
+      detail.className = "activity-clear-preview";
+      detail.textContent = line;
+      item.append(detail);
+    });
     activityBox.append(item);
   });
 }
@@ -587,7 +876,7 @@ async function loadLoungeData() {
 
   const { data: summaries, error: summaryError } = await client
     .from("level_summaries")
-    .select("display_name, level, total_count, clear_count, medal_count, fc_count, perfect_count, updated_at")
+    .select("user_id, display_name, level, total_count, fail_count, clear_count, fc_count, perfect_count, updated_at")
     .eq("level", Number(activeLoungeLevel))
     .order("clear_count", { ascending: false })
     .order("fc_count", { ascending: false })
@@ -639,6 +928,7 @@ document.querySelectorAll(".level-tabs button[data-level]").forEach((button) => 
     document
       .querySelectorAll(".level-tabs button[data-level]")
       .forEach((item) => item.classList.toggle("active", item.dataset.level === activeLoungeLevel));
+    renderPlayerDetailEmpty(`选择 Lv${activeLoungeLevel} 的排行榜玩家查看详细攻略情况。`);
     loadLoungeData();
   });
 });

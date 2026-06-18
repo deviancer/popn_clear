@@ -34,6 +34,13 @@ const MEDALS_BY_CLEAR = {
   perfect: ["c_12"],
 };
 
+const DEFAULT_MEDAL_BY_CLEAR = {
+  fail: "c_3",
+  clear: "c_6",
+  fc: "c_9",
+  perfect: "c_12",
+};
+
 const MEDAL_STATUS_CLASS = {
   c_1: "status-fail",
   c_2: "status-fail",
@@ -530,6 +537,7 @@ async function saveCurrentLevelToAccount() {
       level: Number(payload.level),
       display_name: displayName,
       total_count: payload.total,
+      fail_count: payload.fail,
       clear_count: payload.clear,
       medal_count: payload.medal,
       fc_count: payload.fullCombo,
@@ -708,6 +716,15 @@ function medalOptions(clearValue) {
   ];
 }
 
+function defaultMedalForClear(clearValue) {
+  return DEFAULT_MEDAL_BY_CLEAR[clearValue] || "";
+}
+
+function medalAllowedForClear(medalValue, clearValue) {
+  if (!medalValue) return false;
+  return (MEDALS_BY_CLEAR[clearValue] || []).includes(medalValue);
+}
+
 function statusClass(record) {
   if (record.medal && MEDAL_STATUS_CLASS[record.medal]) return MEDAL_STATUS_CLASS[record.medal];
   const option = CLEAR_OPTIONS.find((item) => item.value === record.clear);
@@ -811,6 +828,20 @@ function countForFilter(filter) {
   return songs.filter((song) => song.major === filter.major && song.minor === filter.minor).length;
 }
 
+function clearCountForFilter(filter) {
+  const state = loadState(currentLevel);
+  return songsForFilter(filter).filter((song) => {
+    const record = state[songId(song)] || {};
+    normalizeRecord(record);
+    const kind = recordKind(record);
+    return kind === "clear" || kind === "fc" || kind === "perfect";
+  }).length;
+}
+
+function countLabelForFilter(filter) {
+  return `${clearCountForFilter(filter)}/${countForFilter(filter)}`;
+}
+
 function filterKey(filter) {
   if (filter.type === "all") return "all";
   if (filter.type === "major") return `major:${filter.major}`;
@@ -839,7 +870,7 @@ function makeMajorGroupRow(major) {
   const row = document.createElement("div");
   const collapsed = collapsedLeftMajors.has(leftMajorKey(major));
   row.className = "group-row";
-  row.append(makeGroupButton(filter, major, countForFilter(filter), "major"));
+  row.append(makeGroupButton(filter, major, countLabelForFilter(filter), "major"));
   row.append(makeCollapseButton(collapsed, () => {
     toggleSet(collapsedLeftMajors, leftMajorKey(major));
     renderGroups();
@@ -877,17 +908,19 @@ function rightSectionKey(type, major, minor = "") {
 }
 
 function renderGroups() {
-  const nodes = [makeGroupButton({ type: "all" }, "ALL", songs.length)];
+  const allFilter = { type: "all" };
+  const nodes = [makeGroupButton(allFilter, "ALL", countLabelForFilter(allFilter))];
 
   orderedMajors().forEach((major) => {
     nodes.push(makeMajorGroupRow(major));
     if (!collapsedLeftMajors.has(leftMajorKey(major))) {
       orderedMinors(major).forEach((minor) => {
+        const filter = { type: "sub", major, minor };
         nodes.push(
           makeGroupButton(
-            { type: "sub", major, minor },
+            filter,
             minor === "未定" ? "未定" : minor.replace(major, ""),
-            countForFilter({ type: "sub", major, minor }),
+            countLabelForFilter(filter),
             "minor",
           ),
         );
@@ -941,9 +974,10 @@ function renderCard(song) {
 
   clearSelect.addEventListener("change", () => {
     const nextMedals = medalOptions(clearSelect.value);
-    const allowed = nextMedals.some((option) => option.value === medalSelect.value);
     fillOptions(medalSelect, nextMedals);
-    medalSelect.value = allowed ? medalSelect.value : "";
+    medalSelect.value = medalAllowedForClear(medalSelect.value, clearSelect.value)
+      ? medalSelect.value
+      : defaultMedalForClear(clearSelect.value);
 
     state[id] = {
       ...(state[id] || {}),
@@ -1083,14 +1117,6 @@ sortToggle.addEventListener("click", () => {
   sortAscending = !sortAscending;
   sortLabel.textContent = sortAscending ? "↑" : "↓";
   sortToggle.setAttribute("aria-pressed", String(!sortAscending));
-  renderGroups();
-  renderSongs();
-});
-
-document.querySelector("#reset-demo").addEventListener("click", () => {
-  const state = loadState(currentLevel);
-  Object.keys(state).forEach((key) => delete state[key]);
-  saveState();
   renderGroups();
   renderSongs();
 });
