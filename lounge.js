@@ -292,11 +292,19 @@ function loadLocalState(level) {
   }
 }
 
+function saveLocalState(level, records) {
+  localStorage.setItem(`popn_clear_lv${level}`, JSON.stringify(records));
+}
+
+function loungeRecordForSong(records, song) {
+  return window.POPN_RECORDS.resolveSongRecord(records, song) || {};
+}
+
 function parseSongCatalog(text, level) {
-  return text
+  const catalog = text
     .split(/\r?\n/)
-    .map((line) => line.trimEnd())
-    .filter(Boolean)
+    // Preserve trailing tabs: an empty final column represents an unset difficulty.
+    .filter((line) => line.trim().length > 0)
     .map((line, index) => {
       const columns = line.split("\t");
       const hasLicensedColumn = columns.length >= 8;
@@ -305,7 +313,7 @@ function parseSongCatalog(text, level) {
         : [columns[0], "", columns[1], columns[2], columns[3], columns[4], columns[5], columns[6]];
       const difficulty = (difficultyRaw || "").trim() || "未定";
       return {
-        id: `${level}-${index}-${(genre || title || "").trim()}`,
+        sourceIndex: index,
         level,
         version: cleanBracket(versionRaw),
         licensed: /\[版\]/.test(licensedRaw || ""),
@@ -318,6 +326,11 @@ function parseSongCatalog(text, level) {
         group: parseDifficultyMajor(difficulty),
       };
     });
+
+  return window.POPN_RECORDS.attachPublishedLegacyIds(
+    window.POPN_RECORDS.prepareSongCatalog(catalog),
+    Number(level),
+  );
 }
 
 function cleanBracket(value = "") {
@@ -355,8 +368,8 @@ function detailDifficultyRank(group) {
 
 function compareDetailSongs(records) {
   return (a, b) => {
-    const recordA = { ...(records[a.id] || {}) };
-    const recordB = { ...(records[b.id] || {}) };
+    const recordA = { ...loungeRecordForSong(records, a) };
+    const recordB = { ...loungeRecordForSong(records, b) };
     normalizeRecord(recordA);
     normalizeRecord(recordB);
 
@@ -372,14 +385,16 @@ function compareDetailSongs(records) {
   };
 }
 
-function buildLevelPayload(level, songCatalog) {
-  const records = loadLocalState(level);
+function buildLevelPayload(level, songCatalog, sourceRecords = loadLocalState(level)) {
+  const records = window.POPN_RECORDS.migrateRecords(sourceRecords, songCatalog).records;
   const counts = { fail: 0, clear: 0, fc: 0, perfect: 0, blank: 0 };
+  let medalCount = 0;
 
   songCatalog.forEach((song) => {
-    const record = records[song.id] || {};
+    const record = loungeRecordForSong(records, song);
     normalizeRecord(record);
     counts[recordKind(record)] += 1;
+    if (record.medal) medalCount += 1;
   });
 
   return {
@@ -389,6 +404,7 @@ function buildLevelPayload(level, songCatalog) {
     fail: counts.fail,
     fullCombo: counts.fc,
     perfect: counts.perfect,
+    medal: medalCount,
     records,
     updatedAt: new Date().toISOString(),
   };
@@ -400,8 +416,8 @@ function isClearKind(kind) {
 
 function clearSongChanges(previousRecords = {}, nextRecords = {}, songCatalog = []) {
   return songCatalog.filter((song) => {
-    const previousRecord = previousRecords[song.id] || {};
-    const nextRecord = nextRecords[song.id] || {};
+    const previousRecord = loungeRecordForSong(previousRecords, song);
+    const nextRecord = loungeRecordForSong(nextRecords, song);
     normalizeRecord(previousRecord);
     normalizeRecord(nextRecord);
     return !isClearKind(recordKind(previousRecord)) && isClearKind(recordKind(nextRecord));
@@ -450,7 +466,7 @@ async function submitAllLocalRecords() {
   }
   if (!requireSignedIn()) return;
 
-  const confirmed = await showConfirm("将上传本机 Lv46-50 的点灯记录到交流室，并覆盖账号里已有的对应等级记录。");
+  const confirmed = await showConfirm("将合并本机与账号中 Lv46-50 的点灯记录，再上传到交流室。账号中无法识别或仅云端存在的成绩也会保留。");
   if (!confirmed) return;
 
   communitySubmit.disabled = true;
@@ -467,24 +483,33 @@ async function submitAllLocalRecords() {
 
     for (const level of LOUNGE_LEVELS) {
       const songCatalog = await loadSongCatalog(level);
-      const payload = buildLevelPayload(level, songCatalog);
-      const { data: previousSummary, error: previousError } = await client
-        .from("level_summaries")
-        .select("clear_count, fc_count, perfect_count")
-        .eq("user_id", userId)
-        .eq("level", Number(level))
-        .maybeSingle();
+      const [summaryResult, recordResult] = await Promise.all([
+        client
+          .from("level_summaries")
+          .select("clear_count, fc_count, perfect_count")
+          .eq("user_id", userId)
+          .eq("level", Number(level))
+          .maybeSingle(),
+        client
+          .from("level_records")
+          .select("records")
+          .eq("user_id", userId)
+          .eq("level", Number(level))
+          .maybeSingle(),
+      ]);
 
-      if (previousError) throw previousError;
+      if (summaryResult.error) throw summaryResult.error;
+      if (recordResult.error) throw recordResult.error;
 
-      const { data: previousRecordRow, error: previousRecordError } = await client
-        .from("level_records")
-        .select("records")
-        .eq("user_id", userId)
-        .eq("level", Number(level))
-        .maybeSingle();
-
-      if (previousRecordError) throw previousRecordError;
+      const previousSummary = summaryResult.data;
+      const previousRecordRow = recordResult.data;
+      const mergedRecords = window.POPN_RECORDS.mergeRecordMaps(
+        previousRecordRow?.records || {},
+        loadLocalState(level),
+        songCatalog,
+      );
+      saveLocalState(level, mergedRecords);
+      const payload = buildLevelPayload(level, songCatalog, mergedRecords);
 
       const clearSongs = clearSongChanges(previousRecordRow?.records || {}, payload.records, songCatalog);
 
@@ -510,7 +535,7 @@ async function submitAllLocalRecords() {
         total_count: payload.total,
         fail_count: payload.fail,
         clear_count: payload.clear,
-        medal_count: Object.values(payload.records).filter((record) => record?.medal).length,
+        medal_count: payload.medal,
         fc_count: payload.fullCombo,
         perfect_count: payload.perfect,
         updated_at: payload.updatedAt,
@@ -602,7 +627,7 @@ function rateClass(rate) {
 function detailCounts(records, songCatalog) {
   const counts = { fail: 0, clear: 0, fc: 0, perfect: 0, blank: 0 };
   songCatalog.forEach((song) => {
-    const record = records[song.id] || {};
+    const record = loungeRecordForSong(records, song);
     normalizeRecord(record);
     counts[recordKind(record)] += 1;
   });
@@ -725,7 +750,7 @@ function renderPlayerDetail(row, records, songCatalog) {
   const list = document.createElement("div");
   list.className = "detail-song-list";
   [...songCatalog].sort(compareDetailSongs(records)).forEach((song) => {
-    list.append(createDetailSongRow(song, records[song.id] || {}));
+    list.append(createDetailSongRow(song, loungeRecordForSong(records, song)));
   });
 
   playerDetailPanel.append(eyebrow, title, updated, summary, list);

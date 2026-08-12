@@ -208,9 +208,32 @@ function closeAuthModal() {
 
 function loadState(level) {
   if (!stateByLevel[level]) {
-    stateByLevel[level] = JSON.parse(localStorage.getItem(`popn_clear_lv${level}`) || "{}");
+    try {
+      stateByLevel[level] = JSON.parse(localStorage.getItem(`popn_clear_lv${level}`) || "{}");
+    } catch (error) {
+      console.error(error);
+      stateByLevel[level] = {};
+    }
+  }
+
+  const levelSongs = songsByLevel[level];
+  if (levelSongs) {
+    const migration = window.POPN_RECORDS.migrateRecords(stateByLevel[level], levelSongs);
+    stateByLevel[level] = migration.records;
+    if (migration.migratedSongs > 0) {
+      localStorage.setItem(`popn_clear_lv${level}`, JSON.stringify(migration.records));
+    }
   }
   return stateByLevel[level];
+}
+
+function recordForSong(records, song) {
+  return window.POPN_RECORDS.resolveSongRecord(records, song) || {};
+}
+
+function updateSongRecord(records, song, patch) {
+  const next = { ...recordForSong(records, song), ...patch };
+  return window.POPN_RECORDS.writeSongRecord(records, song, next);
 }
 
 function saveState() {
@@ -243,7 +266,7 @@ function buildAccountSyncPayload(level = currentLevel) {
   const levelSongs = songsByLevel[level] || (level === currentLevel ? songs : []);
 
   levelSongs.forEach((song) => {
-    const record = state[songId(song)] || {};
+    const record = recordForSong(state, song);
     normalizeRecord(record);
     counts[recordKind(record)] += 1;
     if (record.medal) medalCount += 1;
@@ -470,10 +493,14 @@ async function loadCurrentLevelFromLocalBackup() {
     }
 
     const exportedAt = payload.exportedAt ? `\n缓存时间：${new Date(payload.exportedAt).toLocaleString()}` : "";
-    const shouldLoad = await showConfirm(`将从本机缓存恢复 Lv${currentLevel}，并覆盖当前 Lv${currentLevel} 数据。${exportedAt}`);
+    const shouldLoad = await showConfirm(`将从本机缓存合并恢复 Lv${currentLevel}。缓存中的内容优先，当前仅有的成绩会保留。${exportedAt}`);
     if (!shouldLoad) return;
 
-    stateByLevel[currentLevel] = records;
+    stateByLevel[currentLevel] = window.POPN_RECORDS.mergeRecordMaps(
+      loadState(currentLevel),
+      records,
+      songs,
+    );
     saveStateForLevel(currentLevel);
     renderGroups();
     renderSongs();
@@ -511,19 +538,38 @@ async function saveCurrentLevelToAccount() {
   const client = getSupabaseClient({ notify: true });
   if (!client || !requireSignedIn()) return;
 
-  const payload = buildAccountSyncPayload();
   const userId = currentUserId();
   const displayName = currentDisplayName() || "player";
 
   try {
-    const { data: previousSummary, error: previousError } = await client
-      .from("level_summaries")
-      .select("clear_count, fc_count, perfect_count")
-      .eq("user_id", userId)
-      .eq("level", Number(payload.level))
-      .maybeSingle();
+    const [summaryResult, recordResult] = await Promise.all([
+      client
+        .from("level_summaries")
+        .select("clear_count, fc_count, perfect_count")
+        .eq("user_id", userId)
+        .eq("level", Number(currentLevel))
+        .maybeSingle(),
+      client
+        .from("level_records")
+        .select("records")
+        .eq("user_id", userId)
+        .eq("level", Number(currentLevel))
+        .maybeSingle(),
+    ]);
 
-    if (previousError) throw previousError;
+    if (summaryResult.error) throw summaryResult.error;
+    if (recordResult.error) throw recordResult.error;
+
+    // Read and merge before upsert so old aliases, new stable IDs, and any
+    // records unknown to this catalog all survive an upload.
+    stateByLevel[currentLevel] = window.POPN_RECORDS.mergeRecordMaps(
+      recordResult.data?.records || {},
+      loadState(currentLevel),
+      songs,
+    );
+    saveStateForLevel(currentLevel);
+    const payload = buildAccountSyncPayload();
+    const previousSummary = summaryResult.data;
 
     const recordRow = {
       user_id: userId,
@@ -590,10 +636,16 @@ async function loadCurrentLevelFromAccount() {
     }
 
     const updatedAt = data.updated_at ? `\n账号更新时间：${new Date(data.updated_at).toLocaleString()}` : "";
-    const shouldLoad = await showConfirm(`将从账号加载 Lv${currentLevel}，并覆盖本机当前 Lv${currentLevel} 数据。${updatedAt}`);
+    const shouldLoad = await showConfirm(`将从账号合并加载 Lv${currentLevel}。账号内容优先，本机仅有的成绩会保留。${updatedAt}`);
     if (!shouldLoad) return;
 
-    stateByLevel[currentLevel] = data.records;
+    // Loading prefers the account on conflicts, but retains local-only and
+    // unknown records instead of deleting them.
+    stateByLevel[currentLevel] = window.POPN_RECORDS.mergeRecordMaps(
+      loadState(currentLevel),
+      data.records,
+      songs,
+    );
     saveStateForLevel(currentLevel);
     renderGroups();
     renderSongs();
@@ -605,10 +657,10 @@ async function loadCurrentLevelFromAccount() {
 }
 
 function parseDiffText(text, level) {
-  return text
+  const catalog = text
     .split(/\r?\n/)
-    .map((line) => line.trimEnd())
-    .filter(Boolean)
+    // Preserve trailing tabs: an empty final column represents an unset difficulty.
+    .filter((line) => line.trim().length > 0)
     .map((line, index) => {
       const columns = line.split("\t");
       const hasLicensedColumn = columns.length >= 8;
@@ -618,7 +670,7 @@ function parseDiffText(text, level) {
       const difficulty = (difficultyRaw || "").trim() || "未定";
       const group = parseDifficultyGroup(difficulty);
       return {
-        id: `${level}-${index}-${genre || title}`,
+        sourceIndex: index,
         level,
         version: cleanBracket(versionRaw),
         licensed: /\[版\]/.test(licensedRaw || ""),
@@ -633,6 +685,11 @@ function parseDiffText(text, level) {
         minorValue: group.minorValue,
       };
     });
+
+  return window.POPN_RECORDS.attachPublishedLegacyIds(
+    window.POPN_RECORDS.prepareSongCatalog(catalog),
+    Number(level),
+  );
 }
 
 function cleanBracket(value = "") {
@@ -772,7 +829,7 @@ function aggregateLamp(songGroup) {
   let lowest = Number.POSITIVE_INFINITY;
 
   for (const song of songGroup) {
-    const record = state[songId(song)] || {};
+    const record = recordForSong(state, song);
     normalizeRecord(record);
     const kind = recordKind(record);
     if (kind === "blank") return "";
@@ -793,7 +850,7 @@ function updateProgress() {
   const counts = { fail: 0, clear: 0, fc: 0, perfect: 0, blank: 0 };
 
   songs.forEach((song) => {
-    const record = state[songId(song)] || {};
+    const record = recordForSong(state, song);
     normalizeRecord(record);
     counts[recordKind(record)] += 1;
   });
@@ -831,7 +888,7 @@ function countForFilter(filter) {
 function clearCountForFilter(filter) {
   const state = loadState(currentLevel);
   return songsForFilter(filter).filter((song) => {
-    const record = state[songId(song)] || {};
+    const record = recordForSong(state, song);
     normalizeRecord(record);
     const kind = recordKind(record);
     return kind === "clear" || kind === "fc" || kind === "perfect";
@@ -942,8 +999,7 @@ function songMatches(song) {
 
 function renderCard(song) {
   const state = loadState(currentLevel);
-  const id = songId(song);
-  const record = state[id] || {};
+  const record = recordForSong(state, song);
   normalizeRecord(record);
   const node = cardTemplate.content.firstElementChild.cloneNode(true);
   const clearSelect = node.querySelector(".clear-select");
@@ -979,12 +1035,11 @@ function renderCard(song) {
       ? medalSelect.value
       : defaultMedalForClear(clearSelect.value);
 
-    state[id] = {
-      ...(state[id] || {}),
+    const nextRecord = updateSongRecord(state, song, {
       clear: clearSelect.value,
       medal: medalSelect.value,
-    };
-    applyCardStatus(node, state[id]);
+    });
+    applyCardStatus(node, nextRecord);
     updateIcon(medalPreview, medalSelect.value);
     saveState();
     updateProgress();
@@ -992,12 +1047,11 @@ function renderCard(song) {
   });
 
   medalSelect.addEventListener("change", () => {
-    state[id] = {
-      ...(state[id] || {}),
+    const nextRecord = updateSongRecord(state, song, {
       clear: clearSelect.value,
       medal: medalSelect.value,
-    };
-    applyCardStatus(node, state[id]);
+    });
+    applyCardStatus(node, nextRecord);
     updateIcon(medalPreview, medalSelect.value);
     saveState();
     updateProgress();
@@ -1007,12 +1061,12 @@ function renderCard(song) {
   scoreInput.addEventListener("input", () => {
     const value = scoreInput.value ? Math.min(100000, Math.max(0, Number(scoreInput.value))) : "";
     if (value !== "") scoreInput.value = value;
-    state[id] = { ...(state[id] || {}), score: scoreInput.value };
+    updateSongRecord(state, song, { score: scoreInput.value });
     saveState();
   });
 
   scoreRankSelect.addEventListener("change", () => {
-    state[id] = { ...(state[id] || {}), scoreRank: scoreRankSelect.value };
+    updateSongRecord(state, song, { scoreRank: scoreRankSelect.value });
     updateIcon(scorePreview, scoreRankSelect.value);
     saveState();
   });
