@@ -102,6 +102,25 @@ if (oldClientResult.clear !== "perfect" || oldClientResult.score !== "99999") {
   throw new Error("A cached old client's newer edit was hidden by its stale stable-key copy.");
 }
 
+// Rendering calls migrateRecords repeatedly and each card retains the map it
+// received. A no-op migration must not replace that live map, or edits made by
+// all but the last rendered card disappear before progress/save/account sync.
+const liveRecords = {};
+const firstRenderedCardState = recordsApi.migrateRecords(liveRecords, currentSongs).records;
+const lastRenderedCardState = recordsApi.migrateRecords(firstRenderedCardState, currentSongs).records;
+if (firstRenderedCardState !== lastRenderedCardState) {
+  throw new Error("A no-op migration replaced the live record map.");
+}
+
+recordsApi.writeSongRecord(firstRenderedCardState, firstCurrentSong, {
+  clear: "clear",
+  medal: "c_6",
+});
+const stateReadBySave = recordsApi.migrateRecords(lastRenderedCardState, currentSongs).records;
+if (recordsApi.resolveSongRecord(stateReadBySave, firstCurrentSong)?.clear !== "clear") {
+  throw new Error("A rendered card edit was lost before save/account sync.");
+}
+
 console.log(
   `Lv${level}: ${publishedSongs.length}/${publishedSongs.length} published charts mapped; ` +
     `${currentSongs.length} current charts; unknown keys retained`,

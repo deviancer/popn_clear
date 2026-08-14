@@ -176,7 +176,11 @@
       if (changed) migratedSongs += 1;
     });
 
-    return { records: migrated, migratedSongs };
+    // Keep the live record-map reference stable when there is nothing to
+    // migrate. Song cards retain this object in their change handlers; always
+    // returning the shallow clone would leave every previously rendered card
+    // writing into a stale map that save/progress/account sync no longer read.
+    return { records: migratedSongs > 0 ? migrated : source, migratedSongs };
   }
 
   function mergeRecordMaps(remoteRecords, localRecords, songs) {
