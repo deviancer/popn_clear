@@ -121,6 +121,39 @@ if (recordsApi.resolveSongRecord(stateReadBySave, firstCurrentSong)?.clear !== "
   throw new Error("A rendered card edit was lost before save/account sync.");
 }
 
+const semanticBase = {};
+recordsApi.writeSongRecord(semanticBase, firstCurrentSong, {
+  clear: "normal",
+  medal: "c_6",
+  score: 90000,
+  scoreRank: "s",
+});
+const semanticAliasOnly = {};
+semanticAliasOnly[publishedSongs[0].currentLegacyId] = {
+  clear: "clear",
+  medal: "c_6",
+  score: "90000",
+  scoreRank: "s",
+};
+if (recordsApi.semanticSongChanges(semanticBase, semanticAliasOnly, currentSongs).length !== 0) {
+  throw new Error("Equivalent aliases or value representations were treated as a grade change.");
+}
+if (!recordsApi.hasRecordedData(semanticBase, currentSongs)) {
+  throw new Error("A populated record map was treated as empty.");
+}
+if (recordsApi.hasRecordedData({}, currentSongs)) {
+  throw new Error("An empty record map was treated as populated.");
+}
+
+const semanticChanged = recordsApi.mergeRecordMaps({}, semanticAliasOnly, currentSongs);
+recordsApi.writeSongRecord(semanticChanged, firstCurrentSong, {
+  ...recordsApi.resolveSongRecord(semanticChanged, firstCurrentSong),
+  score: "90001",
+});
+if (recordsApi.semanticSongChanges(semanticAliasOnly, semanticChanged, currentSongs).length !== 1) {
+  throw new Error("A real score change was not detected exactly once.");
+}
+
 console.log(
   `Lv${level}: ${publishedSongs.length}/${publishedSongs.length} published charts mapped; ` +
     `${currentSongs.length} current charts; unknown keys retained`,

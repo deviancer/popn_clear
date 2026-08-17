@@ -198,13 +198,46 @@
     return migrateRecords(merged, songs).records;
   }
 
+  function comparableRecord(record) {
+    const source = isPlainRecord(record) ? record : {};
+    let clear = source.clear || "";
+    if (clear === "failed") clear = "fail";
+    if (clear === "normal" || clear === "easy") clear = "clear";
+
+    return {
+      clear: String(clear || "").trim(),
+      medal: String(source.medal || "").trim(),
+      score: source.score === null || source.score === undefined ? "" : String(source.score).trim(),
+      scoreRank: String(source.scoreRank || "").trim(),
+    };
+  }
+
+  function semanticSongChanges(previousRecords, nextRecords, songs) {
+    const previous = isPlainRecord(previousRecords) ? previousRecords : {};
+    const next = isPlainRecord(nextRecords) ? nextRecords : {};
+
+    return songs.flatMap((song) => {
+      const before = comparableRecord(resolveSongRecord(previous, song));
+      const after = comparableRecord(resolveSongRecord(next, song));
+      return JSON.stringify(before) === JSON.stringify(after) ? [] : [{ song, before, after }];
+    });
+  }
+
+  function hasRecordedData(records, songs) {
+    const source = isPlainRecord(records) ? records : {};
+    return songs.some((song) => Object.values(comparableRecord(resolveSongRecord(source, song))).some(Boolean));
+  }
+
   window.POPN_RECORDS = {
     attachPublishedLegacyIds,
+    comparableRecord,
+    hasRecordedData,
     linkLegacyCatalog,
     mergeRecordMaps,
     migrateRecords,
     prepareSongCatalog,
     resolveSongRecord,
+    semanticSongChanges,
     stableSongId,
     writeSongRecord,
   };

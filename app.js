@@ -183,13 +183,24 @@ function showConfirm(message, title = "确认") {
   return showMessage(message, { title, confirm: true });
 }
 
+function registrationErrorMessage(error) {
+  const detail = `${error?.code || ""} ${error?.message || ""}`.toLowerCase();
+  if (detail.includes("player_id_taken") || detail.includes("database error saving new user")) {
+    return "注册失败：这个玩家 ID 已被使用，请换一个名称。玩家 ID 不区分大小写。";
+  }
+  if (detail.includes("already registered") || detail.includes("user_already_exists")) {
+    return "这个邮箱已经注册过了，可以直接登录。";
+  }
+  return error?.message ? `注册失败：${error.message}` : REGISTER_NETWORK_RETRY_MESSAGE;
+}
+
 function openAuthModal(mode) {
   authMode = mode;
   const isRegister = mode === "register";
 
   authModalTitle.textContent = isRegister ? "注册账号" : "登录";
   authModalCopy.textContent = isRegister
-    ? "创建账号后，可以把本机点灯记录上传到账号并显示在交流室。"
+    ? "玩家 ID 不区分大小写且不能重复。注册后会立即登录，无需确认邮箱。"
     : "登录后可以上传账号记录，也可以从账号恢复点灯数据。";
   authSubmit.textContent = isRegister ? "注册" : "登录";
   authDisplayField.hidden = !isRegister;
@@ -426,20 +437,36 @@ async function registerWithEmail() {
 
   const email = authEmail.value.trim();
   const password = authPassword.value;
-  const displayName = authDisplayName.value.trim() || email.split("@")[0];
-  const redirectUrl = new URL("./confirm.html", window.location.href);
+  const displayName = authDisplayName.value.trim();
+
+  if (!displayName) {
+    await showNotice("请输入玩家 ID。玩家 ID 不能只包含空格。");
+    return;
+  }
+
+  const { data: playerIdAvailable, error: availabilityError } = await client.rpc("player_id_available", {
+    candidate: displayName,
+  });
+  if (availabilityError) {
+    console.error(availabilityError);
+    await showNotice(REGISTER_NETWORK_RETRY_MESSAGE);
+    return;
+  }
+  if (!playerIdAvailable) {
+    await showNotice("这个玩家 ID 已被使用或格式不正确，请换一个名称。玩家 ID 不区分大小写。");
+    return;
+  }
 
   const { data, error } = await client.auth.signUp({
     email,
     password,
     options: {
-      emailRedirectTo: redirectUrl.toString(),
       data: { display_name: displayName },
     },
   });
 
   if (error) {
-    await showNotice(REGISTER_NETWORK_RETRY_MESSAGE);
+    await showNotice(registrationErrorMessage(error));
     return;
   }
 
@@ -451,9 +478,9 @@ async function registerWithEmail() {
     } catch (profileError) {
       console.error(profileError);
     }
-    await showNotice("注册成功，已登录。");
+    await showNotice("注册成功，账号已经自动登录。无需确认邮箱，以后可以直接使用邮箱和密码登录。", "注册完成");
   } else {
-    await showNotice("注册成功。请按邮箱确认后再登录。");
+    await showNotice("注册成功。现在可以直接使用邮箱和密码登录。", "注册完成");
   }
 }
 
@@ -517,7 +544,7 @@ function requireSignedIn() {
   return false;
 }
 
-function buildActivityMessage(previousSummary, nextPayload, displayName) {
+function buildActivityMessage(previousSummary, nextPayload, displayName, changedSongCount = 0) {
   if (!previousSummary) {
     return `${displayName} 首次提交了 Lv${nextPayload.level} 点灯记录，clear 总数 ${nextPayload.clear}。`;
   }
@@ -531,7 +558,12 @@ function buildActivityMessage(previousSummary, nextPayload, displayName) {
   if (fcDelta > 0) deltas.push(`新增 full combo ${fcDelta} 首`);
   if (perfectDelta > 0) deltas.push(`新增 perfect ${perfectDelta} 首`);
 
-  return `${displayName} 更新了 Lv${nextPayload.level} 数据，${deltas.length ? deltas.join("，") : `clear 总数 ${nextPayload.clear}`}。`;
+  const changeSummary = deltas.length
+    ? deltas.join("，")
+    : changedSongCount > 0
+      ? `变更 ${changedSongCount} 首歌曲记录`
+      : `clear 总数 ${nextPayload.clear}`;
+  return `${displayName} 更新了 Lv${nextPayload.level} 数据，${changeSummary}。`;
 }
 
 async function saveCurrentLevelToAccount() {
@@ -570,6 +602,21 @@ async function saveCurrentLevelToAccount() {
     saveStateForLevel(currentLevel);
     const payload = buildAccountSyncPayload();
     const previousSummary = summaryResult.data;
+    const previousRecordRow = recordResult.data;
+    const gradeChanges = window.POPN_RECORDS.semanticSongChanges(
+      previousRecordRow?.records || {},
+      payload.records,
+      songs,
+    );
+    const hasRecordedData = window.POPN_RECORDS.hasRecordedData(payload.records, songs);
+    const gradeChanged = gradeChanges.length > 0;
+    const shouldPublishSummary = gradeChanged || (!previousSummary && hasRecordedData);
+    const shouldWriteRecords = !previousRecordRow || gradeChanged;
+
+    if (!shouldWriteRecords && !shouldPublishSummary) {
+      await showNotice(`Lv${currentLevel} 同步完成，没有发现成绩变化。`);
+      return;
+    }
 
     const recordRow = {
       user_id: userId,
@@ -591,25 +638,33 @@ async function saveCurrentLevelToAccount() {
       updated_at: payload.updatedAt,
     };
 
-    const { error: recordError } = await client.from("level_records").upsert(recordRow, {
-      onConflict: "user_id,level",
-    });
-    if (recordError) throw recordError;
+    if (shouldWriteRecords) {
+      const { error: recordError } = await client.from("level_records").upsert(recordRow, {
+        onConflict: "user_id,level",
+      });
+      if (recordError) throw recordError;
+    }
 
-    const { error: summaryError } = await client.from("level_summaries").upsert(summaryRow, {
-      onConflict: "user_id,level",
-    });
-    if (summaryError) throw summaryError;
+    if (shouldPublishSummary) {
+      const { error: summaryError } = await client.from("level_summaries").upsert(summaryRow, {
+        onConflict: "user_id,level",
+      });
+      if (summaryError) throw summaryError;
 
-    const { error: logError } = await client.from("activity_logs").insert({
-      user_id: userId,
-      display_name: displayName,
-      level: Number(payload.level),
-      message: buildActivityMessage(previousSummary, payload, displayName),
-    });
-    if (logError) throw logError;
+      const { error: logError } = await client.from("activity_logs").insert({
+        user_id: userId,
+        display_name: displayName,
+        level: Number(payload.level),
+        message: buildActivityMessage(previousSummary, payload, displayName, gradeChanges.length),
+      });
+      if (logError) throw logError;
+    }
 
-    await showNotice(`Lv${currentLevel} 已上传至账号。`);
+    await showNotice(
+      shouldPublishSummary
+        ? `Lv${currentLevel} 已上传至账号，变更 ${gradeChanges.length} 首歌曲记录。`
+        : `Lv${currentLevel} 已保存到账号；没有可公开的成绩变化。`,
+    );
   } catch (error) {
     console.error(error);
     await showNotice("上传失败，请检查网络后稍后重试。");

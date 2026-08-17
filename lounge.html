@@ -104,11 +104,39 @@
 
           <section class="activity-panel">
             <div class="activity-heading">
-              <p class="eyebrow">activity log</p>
-              <h2>消息数据</h2>
+              <div>
+                <p class="eyebrow">community board</p>
+                <h2>交流动态</h2>
+              </div>
+              <div class="community-view-tabs" role="tablist" aria-label="交流室内容">
+                <button class="active" type="button" role="tab" aria-selected="true" data-community-view="activity">成绩动态</button>
+                <button type="button" role="tab" aria-selected="false" data-community-view="guestbook">玩家留言</button>
+              </div>
             </div>
-            <div class="activity-box" id="activity-box" aria-label="community activity messages">
-              <p>还没有消息数据。</p>
+            <div id="activity-view" data-community-panel="activity">
+              <div class="activity-box" id="activity-box" aria-label="community activity messages">
+                <p>还没有成绩动态。</p>
+              </div>
+            </div>
+            <div class="guestbook-panel" id="guestbook-view" data-community-panel="guestbook" hidden>
+              <form class="guestbook-form" id="guestbook-form">
+                <label for="guestbook-content">留下想对其他玩家说的话</label>
+                <textarea
+                  id="guestbook-content"
+                  maxlength="300"
+                  rows="4"
+                  placeholder="分享近况、约交流，或给其他玩家留一句话……"
+                  required
+                ></textarea>
+                <div class="guestbook-form-footer">
+                  <span id="guestbook-auth-copy">登录后可以用玩家 ID 留言。</span>
+                  <span class="guestbook-counter"><strong id="guestbook-count">0</strong>/300</span>
+                  <button class="modal-primary" id="guestbook-submit" type="submit">发布留言</button>
+                </div>
+              </form>
+              <div class="guestbook-list" id="guestbook-list" aria-live="polite">
+                <p class="guestbook-empty">还没有玩家留言。</p>
+              </div>
             </div>
           </section>
         </section>
@@ -140,7 +168,7 @@
           </label>
           <label id="auth-display-field">
             <span>玩家 ID</span>
-            <input id="auth-display-name" type="text" autocomplete="nickname" maxlength="24" />
+            <input id="auth-display-name" type="text" autocomplete="nickname" minlength="1" maxlength="24" />
           </label>
           <div class="modal-actions">
             <button class="ghost-button" type="button" data-modal-close="auth">取消</button>
@@ -164,7 +192,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./supabase-config.js"></script>
-    <script src="./record-identity.js?v=20260812-2"></script>
-    <script src="./lounge.js?v=20260812-2"></script>
+    <script src="./record-identity.js?v=20260815-1"></script>
+    <script src="./lounge.js?v=20260815-1"></script>
   </body>
 </html>

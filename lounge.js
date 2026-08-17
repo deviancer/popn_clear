@@ -23,6 +23,14 @@ const songCatalogByLevel = {};
 
 const rankTableBody = document.querySelector("#rank-table-body");
 const activityBox = document.querySelector("#activity-box");
+const communityViewButtons = document.querySelectorAll("[data-community-view]");
+const communityPanels = document.querySelectorAll("[data-community-panel]");
+const guestbookForm = document.querySelector("#guestbook-form");
+const guestbookContent = document.querySelector("#guestbook-content");
+const guestbookCount = document.querySelector("#guestbook-count");
+const guestbookAuthCopy = document.querySelector("#guestbook-auth-copy");
+const guestbookSubmit = document.querySelector("#guestbook-submit");
+const guestbookList = document.querySelector("#guestbook-list");
 const playerDetailPanel = document.querySelector("#player-detail-panel");
 const loungeProfileName = document.querySelector("#lounge-profile-name");
 const communitySubmit = document.querySelector("#community-submit");
@@ -47,6 +55,8 @@ const messageCancel = document.querySelector("#message-cancel");
 let authMode = "login";
 let messageResolver = null;
 let loungeLoadToken = 0;
+let guestbookLoaded = false;
+let guestbookRows = [];
 const loungeAuthState = {
   user: null,
   profile: null,
@@ -93,6 +103,17 @@ function showConfirm(message, title = "确认") {
   return showMessage(message, { title, confirm: true });
 }
 
+function registrationErrorMessage(error) {
+  const detail = `${error?.code || ""} ${error?.message || ""}`.toLowerCase();
+  if (detail.includes("player_id_taken") || detail.includes("database error saving new user")) {
+    return "注册失败：这个玩家 ID 已被使用，请换一个名称。玩家 ID 不区分大小写。";
+  }
+  if (detail.includes("already registered") || detail.includes("user_already_exists")) {
+    return "这个邮箱已经注册过了，可以直接登录。";
+  }
+  return error?.message ? `注册失败：${error.message}` : REGISTER_NETWORK_RETRY_MESSAGE;
+}
+
 function setProfileMenuOpen(open) {
   if (!profileMenuToggle || !profileDropdown) return;
   profileMenuToggle.setAttribute("aria-expanded", String(open));
@@ -118,6 +139,8 @@ function updateLoungeProfileName() {
     .querySelectorAll('[data-auth-action="login"], [data-auth-action="register"]')
     .forEach((button) => button.toggleAttribute("hidden", signedIn));
   document.querySelector('[data-auth-action="logout"]')?.toggleAttribute("hidden", !signedIn);
+  updateGuestbookComposer();
+  if (guestbookLoaded) renderGuestbookRows(guestbookRows);
 }
 
 function openAuthModal(mode) {
@@ -126,7 +149,7 @@ function openAuthModal(mode) {
 
   authModalTitle.textContent = isRegister ? "注册账号" : "登录";
   authModalCopy.textContent = isRegister
-    ? "创建账号后，可以从点灯页上传记录到交流室。"
+    ? "玩家 ID 不区分大小写且不能重复。注册后会立即登录，无需确认邮箱。"
     : "登录后可以查看账号状态，并在点灯页同步记录。";
   authSubmit.textContent = isRegister ? "注册" : "登录";
   authDisplayField.hidden = !isRegister;
@@ -238,19 +261,36 @@ async function registerWithEmail() {
   }
 
   const email = authEmail.value.trim();
-  const displayName = authDisplayName.value.trim() || email.split("@")[0];
-  const redirectUrl = new URL("./confirm.html", window.location.href);
+  const displayName = authDisplayName.value.trim();
+
+  if (!displayName) {
+    await showNotice("请输入玩家 ID。玩家 ID 不能只包含空格。");
+    return;
+  }
+
+  const { data: playerIdAvailable, error: availabilityError } = await client.rpc("player_id_available", {
+    candidate: displayName,
+  });
+  if (availabilityError) {
+    console.error(availabilityError);
+    await showNotice(REGISTER_NETWORK_RETRY_MESSAGE);
+    return;
+  }
+  if (!playerIdAvailable) {
+    await showNotice("这个玩家 ID 已被使用或格式不正确，请换一个名称。玩家 ID 不区分大小写。");
+    return;
+  }
+
   const { data, error } = await client.auth.signUp({
     email,
     password: authPassword.value,
     options: {
-      emailRedirectTo: redirectUrl.toString(),
       data: { display_name: displayName },
     },
   });
 
   if (error) {
-    await showNotice(REGISTER_NETWORK_RETRY_MESSAGE);
+    await showNotice(registrationErrorMessage(error));
     return;
   }
 
@@ -262,9 +302,9 @@ async function registerWithEmail() {
     } catch (profileError) {
       console.error(profileError);
     }
-    await showNotice("注册成功，已登录。");
+    await showNotice("注册成功，账号已经自动登录。无需确认邮箱，以后可以直接使用邮箱和密码登录。", "注册完成");
   } else {
-    await showNotice("注册成功。请按邮箱确认后再登录。");
+    await showNotice("注册成功。现在可以直接使用邮箱和密码登录。", "注册完成");
   }
 }
 
@@ -431,7 +471,7 @@ function formatClearSongPreview(clearSongs) {
   return rest > 0 ? `${preview.join("、")}，另 ${rest} 首` : preview.join("、");
 }
 
-function buildActivityMessageV2(previousSummary, payload, displayName, clearSongs = []) {
+function buildActivityMessageV2(previousSummary, payload, displayName, clearSongs = [], changedSongCount = 0) {
   const clearPreview = formatClearSongPreview(clearSongs);
   const suffix = clearPreview ? `\n本次 clear：${clearPreview}` : "";
 
@@ -448,7 +488,12 @@ function buildActivityMessageV2(previousSummary, payload, displayName, clearSong
   if (fcDelta > 0) deltas.push(`新增 full combo ${fcDelta} 首`);
   if (perfectDelta > 0) deltas.push(`新增 perfect ${perfectDelta} 首`);
 
-  return `${displayName} 更新了 Lv${payload.level} 数据，${deltas.length ? deltas.join("，") : `clear 总数 ${payload.clear}`}。${suffix}`;
+  const changeSummary = deltas.length
+    ? deltas.join("，")
+    : changedSongCount > 0
+      ? `变更 ${changedSongCount} 首歌曲记录`
+      : `clear 总数 ${payload.clear}`;
+  return `${displayName} 更新了 Lv${payload.level} 数据，${changeSummary}。${suffix}`;
 }
 
 function requireSignedIn() {
@@ -466,7 +511,7 @@ async function submitAllLocalRecords() {
   }
   if (!requireSignedIn()) return;
 
-  const confirmed = await showConfirm("将合并本机与账号中 Lv46-50 的点灯记录，再上传到交流室。账号中无法识别或仅云端存在的成绩也会保留。");
+  const confirmed = await showConfirm("将合并本机与账号中 Lv46-50 的点灯记录，再上传到交流室。账号中无法识别或仅云端存在的成绩也会保留；没有成绩变化的等级不会刷新动态和更新时间。");
   if (!confirmed) return;
 
   communitySubmit.disabled = true;
@@ -477,6 +522,7 @@ async function submitAllLocalRecords() {
     const displayName = loungeAuthState.profile?.display_name || loungeAuthState.user.email || "player";
     const summaries = [];
     const logs = [];
+    let publicUpdateCount = 0;
     let totalClearDelta = 0;
     let totalFcDelta = 0;
     let totalPerfectDelta = 0;
@@ -512,21 +558,37 @@ async function submitAllLocalRecords() {
       const payload = buildLevelPayload(level, songCatalog, mergedRecords);
 
       const clearSongs = clearSongChanges(previousRecordRow?.records || {}, payload.records, songCatalog);
-
-      totalClearDelta += Math.max(0, payload.clear - (previousSummary?.clear_count || 0));
-      totalFcDelta += Math.max(0, payload.fullCombo - (previousSummary?.fc_count || 0));
-      totalPerfectDelta += Math.max(0, payload.perfect - (previousSummary?.perfect_count || 0));
-
-      const { error: recordError } = await client.from("level_records").upsert(
-        {
-          user_id: userId,
-          level: Number(level),
-          records: payload.records,
-          updated_at: payload.updatedAt,
-        },
-        { onConflict: "user_id,level" },
+      const gradeChanges = window.POPN_RECORDS.semanticSongChanges(
+        previousRecordRow?.records || {},
+        payload.records,
+        songCatalog,
       );
-      if (recordError) throw recordError;
+      const hasRecordedData = window.POPN_RECORDS.hasRecordedData(payload.records, songCatalog);
+      const gradeChanged = gradeChanges.length > 0;
+      const shouldPublishSummary = gradeChanged || (!previousSummary && hasRecordedData);
+      const shouldWriteRecords = !previousRecordRow || gradeChanged;
+
+      if (shouldWriteRecords) {
+        const { error: recordError } = await client.from("level_records").upsert(
+          {
+            user_id: userId,
+            level: Number(level),
+            records: payload.records,
+            updated_at: payload.updatedAt,
+          },
+          { onConflict: "user_id,level" },
+        );
+        if (recordError) throw recordError;
+      }
+
+      if (!shouldPublishSummary) continue;
+
+      publicUpdateCount += 1;
+      if (gradeChanged || !previousRecordRow) {
+        totalClearDelta += Math.max(0, payload.clear - (previousSummary?.clear_count || 0));
+        totalFcDelta += Math.max(0, payload.fullCombo - (previousSummary?.fc_count || 0));
+        totalPerfectDelta += Math.max(0, payload.perfect - (previousSummary?.perfect_count || 0));
+      }
 
       summaries.push({
         user_id: userId,
@@ -545,23 +607,31 @@ async function submitAllLocalRecords() {
         user_id: userId,
         display_name: displayName,
         level: Number(level),
-        message: buildActivityMessageV2(previousSummary, payload, displayName, clearSongs),
+        message: buildActivityMessageV2(previousSummary, payload, displayName, clearSongs, gradeChanges.length),
       });
     }
 
-    const { error: summaryError } = await client.from("level_summaries").upsert(summaries, {
-      onConflict: "user_id,level",
-    });
-    if (summaryError) throw summaryError;
+    if (summaries.length) {
+      const { error: summaryError } = await client.from("level_summaries").upsert(summaries, {
+        onConflict: "user_id,level",
+      });
+      if (summaryError) throw summaryError;
+    }
 
-    const { error: logError } = await client.from("activity_logs").insert(logs);
-    if (logError) throw logError;
+    if (logs.length) {
+      const { error: logError } = await client.from("activity_logs").insert(logs);
+      if (logError) throw logError;
+    }
 
-    await loadLoungeData();
-    await showNotice(
-      `Lv46-50 上传成功。\n新增 clear ${totalClearDelta} 首，新增 full combo ${totalFcDelta} 首，新增 perfect ${totalPerfectDelta} 首。`,
-      "提交完成",
-    );
+    if (publicUpdateCount > 0) {
+      await loadLoungeData();
+      await showNotice(
+        `Lv46-50 上传成功，更新 ${publicUpdateCount} 个等级。\n新增 clear ${totalClearDelta} 首，新增 full combo ${totalFcDelta} 首，新增 perfect ${totalPerfectDelta} 首。`,
+        "提交完成",
+      );
+    } else {
+      await showNotice("同步完成，没有发现成绩变化；交流室动态和更新时间均未刷新。", "无需更新");
+    }
   } catch (error) {
     console.error(error);
     await showNotice("提交失败，请检查网络后稍后重试。");
@@ -604,6 +674,196 @@ async function hideOwnCommunityData() {
     communityHide.disabled = false;
     communityHide.textContent = "隐藏我的数据";
   }
+}
+
+function updateGuestbookComposer() {
+  if (!guestbookAuthCopy) return;
+  if (loungeAuthState.user) {
+    const displayName = loungeAuthState.profile?.display_name || preferredDisplayName(loungeAuthState.user);
+    guestbookAuthCopy.textContent = `将以 ${displayName} 的玩家 ID 发布；每 15 秒最多一条。`;
+  } else {
+    guestbookAuthCopy.textContent = "登录后可以用玩家 ID 留言。";
+  }
+}
+
+function updateGuestbookCount() {
+  if (guestbookCount && guestbookContent) {
+    guestbookCount.textContent = String(guestbookContent.value.length);
+  }
+}
+
+function setCommunityView(view) {
+  const nextView = view === "guestbook" ? "guestbook" : "activity";
+  communityViewButtons.forEach((button) => {
+    const active = button.dataset.communityView === nextView;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  communityPanels.forEach((panel) => {
+    panel.hidden = panel.dataset.communityPanel !== nextView;
+  });
+
+  if (nextView === "guestbook") loadGuestbookMessages();
+}
+
+function renderGuestbookLoading() {
+  if (!guestbookList) return;
+  guestbookList.replaceChildren();
+  const item = document.createElement("p");
+  item.className = "guestbook-loading";
+  item.innerHTML = `<span class="loading-line"><span class="loading-spinner"></span>加载留言中...</span>`;
+  guestbookList.append(item);
+}
+
+function guestbookDisplayName(row) {
+  const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+  return profile?.display_name || "player";
+}
+
+function renderGuestbookRows(rows) {
+  if (!guestbookList) return;
+  guestbookList.replaceChildren();
+
+  if (!rows.length) {
+    const empty = document.createElement("p");
+    empty.className = "guestbook-empty";
+    empty.textContent = "还没有玩家留言。";
+    guestbookList.append(empty);
+    return;
+  }
+
+  rows.forEach((row) => {
+    const article = document.createElement("article");
+    article.className = "guestbook-message";
+
+    const header = document.createElement("div");
+    header.className = "guestbook-message-header";
+    const player = document.createElement("strong");
+    player.textContent = guestbookDisplayName(row);
+    const time = document.createElement("time");
+    time.dateTime = row.created_at;
+    time.textContent = formatDateTime(row.created_at);
+    header.append(player, time);
+
+    if (row.user_id === loungeAuthState.user?.id) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.dataset.guestbookDelete = String(row.id);
+      remove.textContent = "删除";
+      header.append(remove);
+    }
+
+    const content = document.createElement("p");
+    content.className = "guestbook-message-content";
+    content.textContent = row.content;
+    article.append(header, content);
+    guestbookList.append(article);
+  });
+}
+
+async function loadGuestbookMessages({ force = false } = {}) {
+  if (guestbookLoaded && !force) {
+    renderGuestbookRows(guestbookRows);
+    return;
+  }
+
+  const client = getLoungeSupabase();
+  if (!client) {
+    guestbookRows = [];
+    guestbookLoaded = true;
+    renderGuestbookRows([]);
+    return;
+  }
+
+  renderGuestbookLoading();
+  const { data, error } = await client
+    .from("guestbook_messages")
+    .select("id, user_id, content, created_at, profiles!guestbook_messages_user_id_fkey(display_name)")
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    console.error(error);
+    guestbookRows = [];
+    guestbookLoaded = false;
+    if (guestbookList) {
+      guestbookList.replaceChildren();
+      const failed = document.createElement("p");
+      failed.className = "guestbook-empty";
+      failed.textContent = "读取留言失败，请检查网络后稍后重试。";
+      guestbookList.append(failed);
+    }
+    return;
+  }
+
+  guestbookRows = data || [];
+  guestbookLoaded = true;
+  renderGuestbookRows(guestbookRows);
+}
+
+async function submitGuestbookMessage(event) {
+  event.preventDefault();
+  const client = getLoungeSupabase();
+  if (!client) {
+    await showNotice(NETWORK_RETRY_MESSAGE);
+    return;
+  }
+  if (!requireSignedIn()) return;
+
+  const content = guestbookContent.value.trim();
+  if (!content) {
+    await showNotice("请输入留言内容。");
+    guestbookContent.focus();
+    return;
+  }
+  if (content.length > 300) {
+    await showNotice("留言最多 300 个字符。");
+    return;
+  }
+
+  guestbookSubmit.disabled = true;
+  guestbookSubmit.textContent = "发布中...";
+  const { error } = await client.from("guestbook_messages").insert({
+    user_id: loungeAuthState.user.id,
+    content,
+  });
+  guestbookSubmit.disabled = false;
+  guestbookSubmit.textContent = "发布留言";
+
+  if (error) {
+    console.error(error);
+    const errorDetail = `${error.code || ""} ${error.message || ""}`.toLowerCase();
+    await showNotice(
+      errorDetail.includes("guestbook_rate_limited")
+        ? "发送得有点快，请等待 15 秒后再试。"
+        : "留言发布失败，请检查网络后稍后重试。",
+    );
+    return;
+  }
+
+  guestbookContent.value = "";
+  updateGuestbookCount();
+  await loadGuestbookMessages({ force: true });
+}
+
+async function deleteGuestbookMessage(messageId) {
+  const client = getLoungeSupabase();
+  if (!client || !loungeAuthState.user) return;
+  const confirmed = await showConfirm("确定删除这条留言吗？");
+  if (!confirmed) return;
+
+  const { error } = await client
+    .from("guestbook_messages")
+    .delete()
+    .eq("id", messageId)
+    .eq("user_id", loungeAuthState.user.id);
+  if (error) {
+    console.error(error);
+    await showNotice("删除留言失败，请稍后重试。");
+    return;
+  }
+  await loadGuestbookMessages({ force: true });
 }
 
 function formatDateTime(value) {
@@ -1006,6 +1266,17 @@ messageCancel?.addEventListener("click", () => closeMessageModal(false));
 communitySubmit?.addEventListener("click", submitAllLocalRecords);
 communityHide?.addEventListener("click", hideOwnCommunityData);
 
+communityViewButtons.forEach((button) => {
+  button.addEventListener("click", () => setCommunityView(button.dataset.communityView));
+});
+
+guestbookContent?.addEventListener("input", updateGuestbookCount);
+guestbookForm?.addEventListener("submit", submitGuestbookMessage);
+guestbookList?.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-guestbook-delete]");
+  if (button) await deleteGuestbookMessage(button.dataset.guestbookDelete);
+});
+
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".profile-menu")) {
     setProfileMenuOpen(false);
@@ -1020,6 +1291,8 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+updateGuestbookCount();
+updateGuestbookComposer();
 loadLoungeProfile();
 loadLoungeData();
 
