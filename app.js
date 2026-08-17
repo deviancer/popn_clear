@@ -41,6 +41,13 @@ const DEFAULT_MEDAL_BY_CLEAR = {
   perfect: "c_12",
 };
 
+const CLEAR_RANK = {
+  fail: 1,
+  clear: 2,
+  fc: 3,
+  perfect: 4,
+};
+
 const MEDAL_STATUS_CLASS = {
   c_1: "status-fail",
   c_2: "status-fail",
@@ -91,6 +98,9 @@ let activeFilter = { type: "all" };
 let query = "";
 let sortAscending = true;
 let songs = [];
+let batchMode = false;
+let batchUndo = null;
+const selectedSongIds = new Set();
 const collapsedLeftMajors = new Set();
 const collapsedRightSections = new Set();
 
@@ -107,6 +117,20 @@ const lampPie = document.querySelector("#lamp-pie");
 const pieLegend = document.querySelector("#pie-legend");
 const currentLevelLabel = document.querySelector("#current-level");
 const pageTitle = document.querySelector("#page-title");
+const batchToggle = document.querySelector("#batch-toggle");
+const batchPanel = document.querySelector("#batch-panel");
+const batchSelectionCount = document.querySelector("#batch-selection-count");
+const batchSelectionHint = document.querySelector("#batch-selection-hint");
+const batchClearSelect = document.querySelector("#batch-clear-select");
+const batchMedalSelect = document.querySelector("#batch-medal-select");
+const batchWriteMode = document.querySelector("#batch-write-mode");
+const batchSelectVisible = document.querySelector("#batch-select-visible");
+const batchClearSelection = document.querySelector("#batch-clear-selection");
+const batchApply = document.querySelector("#batch-apply");
+const batchExit = document.querySelector("#batch-exit");
+const batchFeedback = document.querySelector("#batch-feedback");
+const batchFeedbackText = document.querySelector("#batch-feedback-text");
+const batchUndoButton = document.querySelector("#batch-undo");
 const profileMenuToggle = document.querySelector("#profile-menu-toggle");
 const profileDropdown = document.querySelector("#profile-dropdown");
 const profileName = document.querySelector("#profile-name");
@@ -837,6 +861,197 @@ function medalAllowedForClear(medalValue, clearValue) {
   return (MEDALS_BY_CLEAR[clearValue] || []).includes(medalValue);
 }
 
+function medalRank(medalValue) {
+  const value = Number((String(medalValue).match(/^c_(\d+)$/) || [])[1]);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function achievementRank(record) {
+  if (!record?.clear) return 0;
+  if (record.medal) return medalRank(record.medal);
+  return medalRank(defaultMedalForClear(record.clear)) || CLEAR_RANK[record.clear] || 0;
+}
+
+function visibleSongs() {
+  return songs.filter((song) => songMatches(song));
+}
+
+function selectedSongs() {
+  return songs.filter((song) => selectedSongIds.has(songId(song)));
+}
+
+function setBatchFeedback(message = "", showUndo = false) {
+  if (!batchFeedback || !batchFeedbackText || !batchUndoButton) return;
+  batchFeedback.hidden = !message;
+  batchFeedbackText.textContent = message;
+  batchUndoButton.hidden = !showUndo;
+}
+
+function syncBatchSelectionUi() {
+  if (!batchPanel) return;
+
+  const selectedCount = selectedSongIds.size;
+  const currentSongs = visibleSongs();
+  const selectedInCurrent = currentSongs.filter((song) => selectedSongIds.has(songId(song))).length;
+  const allCurrentSelected = currentSongs.length > 0 && selectedInCurrent === currentSongs.length;
+
+  batchSelectionCount.textContent = `已选 ${selectedCount} 首`;
+  batchSelectionHint.textContent = selectedCount > selectedInCurrent
+    ? `当前结果中 ${selectedInCurrent} 首，另有 ${selectedCount - selectedInCurrent} 首已选`
+    : "点击卡片，或按难度分组全选";
+  batchClearSelection.disabled = selectedCount === 0;
+  batchApply.disabled = selectedCount === 0;
+  batchSelectVisible.disabled = currentSongs.length === 0;
+  batchSelectVisible.textContent = allCurrentSelected
+    ? `取消当前 ${currentSongs.length} 首`
+    : `全选当前 ${currentSongs.length} 首`;
+
+  songList.querySelectorAll(".song-card[data-song-id]").forEach((card) => {
+    const selected = selectedSongIds.has(card.dataset.songId);
+    const selectButton = card.querySelector(".card-select");
+    card.classList.toggle("is-selected", selected);
+    selectButton?.setAttribute("aria-pressed", String(selected));
+    selectButton?.setAttribute("aria-label", selected ? "取消选择歌曲" : "选择歌曲");
+    if (selectButton?.firstElementChild) selectButton.firstElementChild.textContent = selected ? "✓" : "";
+  });
+
+  songList.querySelectorAll(".batch-section-select").forEach((button) => {
+    const sectionSongs = button.batchSongs || [];
+    const sectionSelected = sectionSongs.filter((song) => selectedSongIds.has(songId(song))).length;
+    const allSelected = sectionSongs.length > 0 && sectionSelected === sectionSongs.length;
+    button.classList.toggle("has-selection", sectionSelected > 0);
+    button.setAttribute("aria-pressed", String(allSelected));
+    button.textContent = allSelected
+      ? `取消 ${sectionSongs.length} 首`
+      : sectionSelected > 0
+        ? `${sectionSelected}/${sectionSongs.length} 已选`
+        : `全选 ${sectionSongs.length} 首`;
+  });
+}
+
+function setSongsSelected(songGroup, selected) {
+  songGroup.forEach((song) => {
+    if (selected) {
+      selectedSongIds.add(songId(song));
+    } else {
+      selectedSongIds.delete(songId(song));
+    }
+  });
+  syncBatchSelectionUi();
+}
+
+function toggleSongSelection(song) {
+  const id = songId(song);
+  setSongsSelected([song], !selectedSongIds.has(id));
+}
+
+function toggleSongGroupSelection(songGroup) {
+  const allSelected = songGroup.length > 0 && songGroup.every((song) => selectedSongIds.has(songId(song)));
+  setSongsSelected(songGroup, !allSelected);
+}
+
+function makeBatchSectionSelect(songGroup) {
+  const button = document.createElement("button");
+  button.className = "batch-section-select";
+  button.type = "button";
+  button.textContent = `全选 ${songGroup.length} 首`;
+  button.setAttribute("aria-pressed", "false");
+  button.batchSongs = songGroup;
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleSongGroupSelection(songGroup);
+  });
+  return button;
+}
+
+function shouldApplyBatchRecord(record, clearValue, medalValue, writeMode) {
+  if (writeMode === "blank") return !record.clear;
+  if (writeMode === "all") return true;
+
+  const targetRank = medalRank(medalValue) || medalRank(defaultMedalForClear(clearValue));
+  return achievementRank(record) <= targetRank;
+}
+
+async function applyBatchRecords() {
+  const targets = selectedSongs();
+  if (!targets.length) return;
+
+  const clearValue = batchClearSelect.value;
+  const medalValue = batchMedalSelect.value;
+  const writeMode = batchWriteMode.value;
+  const state = loadState(currentLevel);
+
+  if (writeMode === "all") {
+    const recordedCount = targets.filter((song) => Boolean(recordForSong(state, song).clear)).length;
+    if (recordedCount > 0) {
+      const confirmed = await showConfirm(
+        `将覆盖所选歌曲中 ${recordedCount} 首已有记录。分数和 Rank 会保留，是否继续？`,
+        "覆盖已有记录",
+      );
+      if (!confirmed) return;
+    }
+  }
+
+  const changes = [];
+  targets.forEach((song) => {
+    const record = { ...recordForSong(state, song) };
+    normalizeRecord(record);
+    if (!shouldApplyBatchRecord(record, clearValue, medalValue, writeMode)) return;
+    if (record.clear === clearValue && record.medal === medalValue) return;
+    changes.push({ song, previous: record });
+  });
+
+  if (!changes.length) {
+    setBatchFeedback(`所选 ${targets.length} 首无需修改，或已被应用范围保护。`);
+    return;
+  }
+
+  changes.forEach(({ song }) => {
+    updateSongRecord(state, song, { clear: clearValue, medal: medalValue });
+  });
+  saveState();
+  batchUndo = { level: currentLevel, changes };
+  selectedSongIds.clear();
+  renderGroups();
+  renderSongs();
+
+  const skippedCount = targets.length - changes.length;
+  const skippedCopy = skippedCount ? `，另有 ${skippedCount} 首无需修改或受到保护` : "";
+  setBatchFeedback(`已更新 ${changes.length} 首${skippedCopy}。`, true);
+  syncBatchSelectionUi();
+}
+
+function undoBatchRecords() {
+  if (!batchUndo || batchUndo.level !== currentLevel) return;
+  const state = loadState(currentLevel);
+  const changeCount = batchUndo.changes.length;
+  batchUndo.changes.forEach(({ song, previous }) => {
+    window.POPN_RECORDS.writeSongRecord(state, song, previous);
+  });
+  saveState();
+  batchUndo = null;
+  renderGroups();
+  renderSongs();
+  setBatchFeedback(`已撤销刚才对 ${changeCount} 首歌曲的批量修改。`);
+}
+
+function setBatchMode(enabled) {
+  batchMode = enabled;
+  document.body.classList.toggle("batch-mode", enabled);
+  batchPanel.hidden = !enabled;
+  batchToggle.setAttribute("aria-pressed", String(enabled));
+  batchToggle.querySelector("strong").textContent = enabled ? "退出批量" : "批量编辑";
+
+  if (!enabled) {
+    selectedSongIds.clear();
+    batchUndo = null;
+    setBatchFeedback();
+  }
+
+  renderSongs();
+  syncBatchSelectionUi();
+}
+
 function statusClass(record) {
   if (record.medal && MEDAL_STATUS_CLASS[record.medal]) return MEDAL_STATUS_CLASS[record.medal];
   const option = CLEAR_OPTIONS.find((item) => item.value === record.clear);
@@ -1057,6 +1272,7 @@ function renderCard(song) {
   const record = recordForSong(state, song);
   normalizeRecord(record);
   const node = cardTemplate.content.firstElementChild.cloneNode(true);
+  const cardSelect = node.querySelector(".card-select");
   const clearSelect = node.querySelector(".clear-select");
   const medalSelect = node.querySelector(".medal-select");
   const scoreInput = node.querySelector(".score-input");
@@ -1064,6 +1280,8 @@ function renderCard(song) {
   const medalPreview = node.querySelector(".medal-preview");
   const scorePreview = node.querySelector(".score-preview");
 
+  node.dataset.songId = songId(song);
+  node.classList.toggle("is-selectable", batchMode);
   node.querySelector(".genre").textContent = song.genre;
   node.querySelector(".title").textContent = song.title;
   node.querySelector(".notes").textContent = song.notes || "-";
@@ -1079,9 +1297,23 @@ function renderCard(song) {
   scoreInput.value = record.score || "";
   scoreRankSelect.value = record.scoreRank || "";
 
+  [clearSelect, medalSelect, scoreInput, scoreRankSelect].forEach((control) => {
+    control.disabled = batchMode;
+  });
+
   applyCardStatus(node, record);
   updateIcon(medalPreview, medalSelect.value);
   updateIcon(scorePreview, scoreRankSelect.value);
+
+  cardSelect.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleSongSelection(song);
+  });
+
+  node.addEventListener("click", (event) => {
+    if (!batchMode || event.target.closest("button, input, select, a")) return;
+    toggleSongSelection(song);
+  });
 
   clearSelect.addEventListener("change", () => {
     const nextMedals = medalOptions(clearSelect.value);
@@ -1129,14 +1361,17 @@ function renderCard(song) {
   return node;
 }
 
-function makeSection(title, count, headingClass = "", collapseKey = "") {
+function makeSection(title, count, headingClass = "", collapseKey = "", selectableSongs = []) {
   const section = sectionTemplate.content.firstElementChild.cloneNode(true);
   section.classList.add(headingClass);
   section.querySelector("h2").textContent = title;
   section.querySelector(".section-heading span").textContent = `${count} songs`;
+  const heading = section.querySelector(".section-heading");
+  if (batchMode && selectableSongs.length) {
+    heading.append(makeBatchSectionSelect(selectableSongs));
+  }
   if (collapseKey) {
     const collapsed = collapsedRightSections.has(collapseKey);
-    const heading = section.querySelector(".section-heading");
     heading.append(makeCollapseButton(collapsed, () => {
       toggleSet(collapsedRightSections, collapseKey);
       renderSongs();
@@ -1163,7 +1398,7 @@ function renderSongs() {
 
     const majorKey = rightSectionKey("major", major);
     const majorCollapsed = collapsedRightSections.has(majorKey);
-    const majorSection = makeSection(major, majorVisible.length, "major-section", majorKey);
+    const majorSection = makeSection(major, majorVisible.length, "major-section", majorKey, majorVisible);
     const majorList = majorSection.querySelector(".song-list");
     fragment.append(majorSection);
     if (majorCollapsed) return;
@@ -1173,7 +1408,13 @@ function renderSongs() {
       const minorSongs = visibleSongsForMinor(major, minor);
       if (!minorSongs.length) return;
 
-      const minorSection = makeSection(minor, minorSongs.length, "minor-section", rightSectionKey("minor", major, minor));
+      const minorSection = makeSection(
+        minor,
+        minorSongs.length,
+        "minor-section",
+        rightSectionKey("minor", major, minor),
+        minorSongs,
+      );
       const list = minorSection.querySelector(".song-list");
       if (!collapsedRightSections.has(rightSectionKey("minor", major, minor))) {
         minorSongs.forEach((song) => list.append(renderCard(song)));
@@ -1184,6 +1425,7 @@ function renderSongs() {
 
   songList.replaceChildren(fragment);
   updateProgress();
+  if (batchMode) syncBatchSelectionUi();
 }
 
 function updateLevelNav() {
@@ -1200,6 +1442,9 @@ function updateLevelNav() {
 async function loadLevel(level) {
   if (!AVAILABLE_LEVELS.includes(level)) return;
   currentLevel = level;
+  selectedSongIds.clear();
+  batchUndo = null;
+  setBatchFeedback();
   activeFilter = { type: "all" };
   query = "";
   searchInput.value = "";
@@ -1216,6 +1461,37 @@ async function loadLevel(level) {
   renderGroups();
   renderSongs();
 }
+
+fillOptions(batchClearSelect, CLEAR_OPTIONS.filter((option) => option.value));
+batchClearSelect.value = "clear";
+fillOptions(batchMedalSelect, medalOptions(batchClearSelect.value));
+batchMedalSelect.value = defaultMedalForClear(batchClearSelect.value);
+
+batchToggle?.addEventListener("click", () => {
+  setBatchMode(!batchMode);
+});
+
+batchExit?.addEventListener("click", () => {
+  setBatchMode(false);
+  batchToggle.focus();
+});
+
+batchClearSelect?.addEventListener("change", () => {
+  fillOptions(batchMedalSelect, medalOptions(batchClearSelect.value));
+  batchMedalSelect.value = defaultMedalForClear(batchClearSelect.value);
+});
+
+batchSelectVisible?.addEventListener("click", () => {
+  toggleSongGroupSelection(visibleSongs());
+});
+
+batchClearSelection?.addEventListener("click", () => {
+  selectedSongIds.clear();
+  syncBatchSelectionUi();
+});
+
+batchApply?.addEventListener("click", applyBatchRecords);
+batchUndoButton?.addEventListener("click", undoBatchRecords);
 
 searchInput.addEventListener("input", () => {
   query = searchInput.value;
@@ -1311,8 +1587,14 @@ document.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     setProfileMenuOpen(false);
-    if (!authModal?.hidden) closeAuthModal();
-    if (!messageModal?.hidden) closeMessageModal(false);
+    if (!authModal?.hidden) {
+      closeAuthModal();
+    } else if (!messageModal?.hidden) {
+      closeMessageModal(false);
+    } else if (batchMode) {
+      setBatchMode(false);
+      batchToggle.focus();
+    }
   }
 });
 

@@ -637,6 +637,53 @@ h1 {
   align-items: end;
 }
 
+.batch-toggle {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #3b3f49;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.batch-toggle span {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 6px;
+  background: #262832;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.batch-toggle strong {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.batch-toggle:hover,
+.batch-toggle[aria-pressed="true"] {
+  border-color: #262832;
+  box-shadow: 3px 3px 0 #262832;
+}
+
+.batch-toggle[aria-pressed="true"] {
+  background: #262832;
+  color: #fff;
+}
+
+.batch-toggle[aria-pressed="true"] span {
+  background: var(--accent);
+}
+
 .search-box {
   display: grid;
   gap: 5px;
@@ -732,7 +779,7 @@ h1 {
 .section-heading {
   position: sticky;
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto auto;
   gap: 12px;
   align-items: center;
   margin: 6px 0 12px;
@@ -816,10 +863,35 @@ h1 {
 }
 
 .section-heading .collapse-button {
-  grid-column: 4;
+  grid-column: auto;
   width: 40px;
   min-height: 38px;
   font-size: 18px;
+}
+
+.batch-section-select {
+  grid-column: auto;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #3b3f49;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.batch-section-select:hover,
+.batch-section-select.has-selection {
+  border-color: #262832;
+  box-shadow: 2px 2px 0 #262832;
+}
+
+.batch-section-select[aria-pressed="true"] {
+  background: #262832;
+  color: #fff;
 }
 
 .song-section.collapsed .section-heading {
@@ -837,6 +909,7 @@ h1 {
 }
 
 .song-card {
+  position: relative;
   display: flex;
   min-height: 218px;
   flex-direction: column;
@@ -855,6 +928,230 @@ h1 {
 .song-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 15px 30px rgba(39, 44, 57, 0.13);
+}
+
+.card-select {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  display: none;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 2px solid rgba(38, 40, 50, 0.46);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #fff;
+  cursor: pointer;
+}
+
+.card-select span {
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.batch-mode .card-select {
+  display: grid;
+}
+
+.batch-mode .song-card.is-selectable {
+  cursor: pointer;
+}
+
+.batch-mode .song-card.is-selectable .song-head > div:first-child {
+  padding-left: 34px;
+}
+
+.batch-mode .song-card.is-selectable .control-grid {
+  opacity: 0.44;
+  pointer-events: none;
+}
+
+.batch-mode .song-card.is-selectable:hover {
+  transform: translateY(-2px) scale(1.008);
+}
+
+.batch-mode .song-card.is-selected {
+  border-color: #262832;
+  outline: 3px solid #262832;
+  outline-offset: -3px;
+  box-shadow: 5px 5px 0 #262832, 0 16px 30px rgba(39, 44, 57, 0.16);
+}
+
+.batch-mode .song-card.is-selected .card-select {
+  border-color: #262832;
+  background: #262832;
+}
+
+.card-select:focus-visible,
+.batch-toggle:focus-visible,
+.batch-section-select:focus-visible,
+.batch-panel button:focus-visible,
+.batch-panel select:focus-visible {
+  outline: 3px solid rgba(236, 95, 117, 0.46);
+  outline-offset: 2px;
+}
+
+.batch-mode .app-shell {
+  padding-bottom: 168px;
+}
+
+.batch-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: auto minmax(390px, 1fr) auto;
+  gap: 10px 16px;
+  align-items: end;
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 14px;
+  border: 1px solid rgba(32, 34, 42, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 48px rgba(31, 35, 48, 0.24), 4px 4px 0 #262832;
+  backdrop-filter: blur(18px);
+}
+
+.batch-panel-summary {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  min-width: 176px;
+}
+
+.batch-panel-mark {
+  display: grid;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 8px;
+  background: #262832;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.batch-panel-summary strong,
+.batch-panel-summary small {
+  display: block;
+}
+
+.batch-panel-summary strong {
+  color: #252731;
+  font-size: 15px;
+}
+
+.batch-panel-summary small {
+  max-width: 245px;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.batch-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(116px, 1fr));
+  gap: 8px;
+}
+
+.batch-fields label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.batch-fields span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.batch-fields select {
+  width: 100%;
+  height: 36px;
+  min-width: 0;
+  padding: 0 9px;
+  border: 1px solid #d6d8e0;
+  border-radius: 8px;
+  background: #f8f9fc;
+  color: #252731;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.batch-panel-actions {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.batch-panel-actions button,
+.batch-feedback button {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.batch-secondary,
+.batch-exit,
+.batch-feedback button {
+  background: #f4f5f9;
+  color: #3b3f49;
+}
+
+.batch-apply {
+  border-color: #262832 !important;
+  background: #262832;
+  color: #fff;
+}
+
+.batch-exit {
+  width: 36px;
+  padding: 0 !important;
+  font-size: 20px !important;
+  line-height: 1;
+}
+
+.batch-panel button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.batch-feedback {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 30px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: #4f5561;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.batch-feedback button {
+  min-height: 28px;
+  border-color: #262832;
+  background: #fff;
 }
 
 .song-main {
@@ -2169,6 +2466,15 @@ h1 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .batch-panel {
+    grid-template-columns: auto minmax(390px, 1fr);
+  }
+
+  .batch-panel-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
   .home-hero,
   .lounge-grid {
     grid-template-columns: 1fr;
@@ -2230,6 +2536,28 @@ h1 {
   .toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .batch-mode .app-shell {
+    padding-bottom: 218px;
+  }
+
+  .batch-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .batch-fields,
+  .batch-panel-actions {
+    grid-column: 1;
+  }
+
+  .batch-panel-actions {
+    justify-content: stretch;
+  }
+
+  .batch-panel-actions .batch-secondary,
+  .batch-panel-actions .batch-apply {
+    flex: 1;
   }
 
   .home-topbar,
@@ -2446,6 +2774,10 @@ h1 {
     flex-direction: column;
   }
 
+  .batch-toggle {
+    width: 100%;
+  }
+
   .search-box {
     min-width: 0;
   }
@@ -2460,7 +2792,7 @@ h1 {
 
   .section-heading {
     position: static;
-    grid-template-columns: auto minmax(24px, 1fr) auto auto;
+    grid-template-columns: auto minmax(24px, 1fr) auto auto auto;
     gap: 6px;
     margin: 4px 0 6px;
     padding: 3px 0;
@@ -2501,6 +2833,12 @@ h1 {
     font-size: 16px;
   }
 
+  .batch-section-select {
+    min-height: 32px;
+    padding: 0 7px;
+    font-size: 10px;
+  }
+
   .major-section > .song-list {
     gap: 8px;
   }
@@ -2521,6 +2859,86 @@ h1 {
 
   .song-card:hover {
     transform: none;
+  }
+
+  .batch-mode .song-card.is-selectable:hover {
+    transform: none;
+  }
+
+  .card-select {
+    top: 7px;
+    left: 7px;
+    width: 25px;
+    height: 25px;
+  }
+
+  .batch-mode .song-card.is-selectable .song-head > div:first-child {
+    padding-left: 29px;
+  }
+
+  .batch-mode .app-shell {
+    padding-bottom: 302px;
+  }
+
+  .batch-panel {
+    right: 6px;
+    bottom: 6px;
+    left: 6px;
+    width: calc(100% - 12px);
+    max-height: calc(100vh - 12px);
+    gap: 9px;
+    padding: 10px;
+    overflow: auto;
+    box-shadow: 0 14px 36px rgba(31, 35, 48, 0.24), 3px 3px 0 #262832;
+  }
+
+  .batch-panel-summary {
+    min-width: 0;
+  }
+
+  .batch-panel-summary small {
+    max-width: none;
+  }
+
+  .batch-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .batch-write-field {
+    grid-column: 1 / -1;
+  }
+
+  .batch-panel-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px;
+  }
+
+  #batch-select-visible {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  #batch-clear-selection {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  #batch-apply {
+    grid-column: 1 / 3;
+    grid-row: 2;
+  }
+
+  #batch-exit {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    width: 36px;
+    height: 100%;
+  }
+
+  .batch-feedback {
+    align-items: flex-start;
+    justify-content: space-between;
+    font-size: 11px;
   }
 
   .song-main {

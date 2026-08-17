@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>popn_clear - 难度表</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260817-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -111,6 +111,10 @@
               <h1 id="page-title">Lv46 难度表</h1>
             </div>
             <div class="toolbar-actions">
+              <button class="batch-toggle" id="batch-toggle" type="button" aria-pressed="false" aria-controls="batch-panel">
+                <span aria-hidden="true">✓</span>
+                <strong>批量编辑</strong>
+              </button>
               <label class="search-box">
                 <span>Search</span>
                 <input id="search" type="search" placeholder="Title / genre" />
@@ -119,6 +123,47 @@
           </div>
 
           <div id="song-list" class="song-sections"></div>
+
+          <section class="batch-panel" id="batch-panel" aria-label="批量编辑" hidden>
+            <div class="batch-panel-summary">
+              <span class="batch-panel-mark" aria-hidden="true">✓</span>
+              <span>
+                <strong id="batch-selection-count">已选 0 首</strong>
+                <small id="batch-selection-hint">点击卡片，或按难度分组全选</small>
+              </span>
+            </div>
+
+            <div class="batch-fields">
+              <label>
+                <span>clear</span>
+                <select id="batch-clear-select"></select>
+              </label>
+              <label>
+                <span>medal</span>
+                <select id="batch-medal-select"></select>
+              </label>
+              <label class="batch-write-field">
+                <span>应用范围</span>
+                <select id="batch-write-mode">
+                  <option value="blank">仅填未记录</option>
+                  <option value="upgrade">只提升成绩</option>
+                  <option value="all">覆盖所选记录</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="batch-panel-actions">
+              <button class="batch-secondary" id="batch-select-visible" type="button">全选当前结果</button>
+              <button class="batch-secondary" id="batch-clear-selection" type="button" disabled>取消选择</button>
+              <button class="batch-apply" id="batch-apply" type="button" disabled>应用到所选</button>
+              <button class="batch-exit" id="batch-exit" type="button" aria-label="退出批量编辑">×</button>
+            </div>
+
+            <div class="batch-feedback" id="batch-feedback" aria-live="polite" hidden>
+              <span id="batch-feedback-text"></span>
+              <button id="batch-undo" type="button" hidden>撤销</button>
+            </div>
+          </section>
         </section>
       </main>
     </div>
@@ -135,6 +180,9 @@
 
     <template id="song-card-template">
       <article class="song-card">
+        <button class="card-select" type="button" aria-pressed="false" aria-label="选择歌曲">
+          <span aria-hidden="true"></span>
+        </button>
         <div class="song-main">
           <div class="song-content">
             <div class="song-head">
@@ -227,6 +275,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./supabase-config.js"></script>
     <script src="./record-identity.js?v=20260815-1"></script>
-    <script src="./app.js?v=20260815-1"></script>
+    <script src="./app.js?v=20260817-1"></script>
   </body>
 </html>
