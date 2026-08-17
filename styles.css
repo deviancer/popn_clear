@@ -130,6 +130,13 @@ textarea {
   height: 38px;
 }
 
+.level-pill.sran-nav-pill {
+  width: auto;
+  min-width: 60px;
+  flex: 0 0 auto;
+  padding: 0 9px;
+}
+
 .level-pill.active {
   border-color: #262832;
   background: #262832;
@@ -1765,6 +1772,34 @@ h1 {
   padding: 20px;
 }
 
+.room-switcher {
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 18px;
+  padding: 4px;
+  border: 1px solid #d6d8e0;
+  border-radius: 10px;
+  background: #f0f2f6;
+}
+
+.room-switcher a {
+  display: inline-grid;
+  min-height: 36px;
+  padding: 0 15px;
+  place-items: center;
+  border-radius: 7px;
+  color: #686e7a;
+  font-size: 13px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.room-switcher a.active {
+  background: #252731;
+  box-shadow: 0 5px 14px rgba(37, 39, 49, 0.16);
+  color: #fff;
+}
+
 .lounge-heading {
   display: flex;
   gap: 16px;
@@ -1793,15 +1828,27 @@ h1 {
   padding: 2px;
 }
 
-.level-tabs button {
+.level-tabs button,
+.level-tabs a {
+  display: inline-grid;
   width: 52px;
   height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.78);
   color: #3b3f49;
   cursor: pointer;
   font-weight: 900;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.level-tabs a.sran-lounge-entry {
+  width: auto;
+  min-width: 112px;
+  padding: 0 14px;
 }
 
 .level-tabs button.active {
@@ -3087,6 +3134,12 @@ h1 {
 
   .community-view-tabs button {
     flex: 1;
+  }
+
+  .room-switcher {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
   }
 
   .guestbook-form-footer {

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>popn_clear - Sran0</title>
+    <link rel="stylesheet" href="./styles.css?v=20260817-2" />
+    <link rel="stylesheet" href="./srandom.css?v=20260817-1" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="./index.html" aria-label="popn_clear home">
+          <span class="brand-mark">pc</span>
+          <span>
+            <strong>popn_clear</strong>
+            <small>clear lamp sheet</small>
+          </span>
+        </a>
+
+        <nav class="level-nav" aria-label="难度表页面">
+          <a class="level-pill nav-link-pill muted" href="./sheet.html?level=46">46</a>
+          <a class="level-pill nav-link-pill muted" href="./sheet.html?level=47">47</a>
+          <a class="level-pill nav-link-pill muted" href="./sheet.html?level=48">48</a>
+          <a class="level-pill nav-link-pill muted" href="./sheet.html?level=49">49</a>
+          <a class="level-pill nav-link-pill muted" href="./sheet.html?level=50">50</a>
+          <a class="level-pill nav-link-pill sran-nav-pill" href="./srandom.html?table=0" data-sran-table="0">Sran0</a>
+          <a class="level-pill nav-link-pill sran-nav-pill muted" href="./srandom.html?table=1" data-sran-table="1">Sran1</a>
+          <a class="level-pill nav-link-pill sran-nav-pill muted" href="./srandom.html?table=2" data-sran-table="2">Sran2</a>
+          <a class="level-pill nav-link-pill sran-nav-pill muted" href="./srandom.html?table=3" data-sran-table="3">Sran3</a>
+          <a class="level-pill nav-link-pill sran-nav-pill muted" href="./srandom.html?table=4" data-sran-table="4">Sran4</a>
+        </nav>
+
+        <div class="sran-header-actions">
+          <a class="icon-button room-button" href="./srandom-lounge.html" aria-label="进入Sran交流室" title="Sran交流室">🏠</a>
+        </div>
+      </header>
+
+      <main class="sran-layout">
+        <aside class="sran-sidebar">
+          <div class="sran-table-title">
+            <span>S-RANDOM</span>
+            <strong id="sran-table-label">Sran0</strong>
+          </div>
+
+          <div class="sran-progress">
+            <span>Clear progress</span>
+            <strong id="sran-progress-label">0 / 0</strong>
+            <div class="sran-progress-track"><span id="sran-progress-bar"></span></div>
+          </div>
+
+          <div class="sran-status-filters" id="sran-status-filters" aria-label="状态筛选"></div>
+
+          <div class="sran-group-wrap">
+            <h2 class="sran-sidebar-heading">表内难度</h2>
+            <div class="sran-group-filters" id="sran-group-filters"></div>
+          </div>
+        </aside>
+
+        <section class="sran-content" aria-label="S-RANDOM歌曲记录">
+          <div class="sran-toolbar">
+            <div>
+              <p class="eyebrow">pop'n music S-RANDOM</p>
+              <h1 id="sran-page-title">Sran0 S-RANDOM表</h1>
+            </div>
+            <div class="sran-toolbar-actions">
+              <span class="sran-result-summary" id="sran-result-summary">显示 0 / 0 首</span>
+              <label class="sran-search-box">
+                <span>Search</span>
+                <input id="sran-search" type="search" placeholder="ジャンル名 / Lv" />
+              </label>
+            </div>
+          </div>
+
+          <div class="sran-song-list" id="sran-song-list" aria-live="polite"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./srandom-data.js?v=20260817-1"></script>
+    <script src="./srandom.js?v=20260817-1"></script>
+  </body>
+</html>
