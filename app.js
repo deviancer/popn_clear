@@ -1185,7 +1185,7 @@ function makeGroupButton(filter, label, count, className = "") {
   button.type = "button";
   button.innerHTML = `<strong>${label}</strong><span>${count}</span>`;
   button.addEventListener("click", () => {
-    activeFilter = filter;
+    activeFilter = isActive(filter) && filter.type !== "all" ? { type: "all" } : filter;
     renderGroups();
     renderSongs();
   });

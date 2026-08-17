@@ -101,8 +101,9 @@ function makeFilterButton(label, count, value, kind) {
   button.append(text, total);
 
   button.addEventListener("click", () => {
-    if (kind === "status") activeStatus = value;
-    else activeGroup = value;
+    const nextValue = selected && value !== "all" ? "all" : value;
+    if (kind === "status") activeStatus = nextValue;
+    else activeGroup = nextValue;
     renderSidebar();
     renderSongs();
   });
