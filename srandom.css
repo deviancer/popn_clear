@@ -78,7 +78,7 @@
 }
 
 .sran-status-filters {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .sran-group-wrap {
@@ -278,6 +278,11 @@
   background: var(--clear);
 }
 
+.sran-card.status-easy-clear {
+  background: var(--clear-green);
+  color: #fff;
+}
+
 .sran-card.status-fail {
   background: var(--fail);
   color: #fff;
@@ -289,6 +294,7 @@
   font-weight: 900;
 }
 
+.sran-card.status-easy-clear .sran-card-difficulty,
 .sran-card.status-fail .sran-card-difficulty {
   color: rgba(255, 255, 255, 0.78);
 }
@@ -320,6 +326,8 @@
   font-weight: 900;
 }
 
+.sran-card.status-easy-clear .sran-card-footer b,
+.sran-card.status-easy-clear .sran-card-footer em,
 .sran-card.status-fail .sran-card-footer b,
 .sran-card.status-fail .sran-card-footer em {
   background: rgba(255, 255, 255, 0.18);

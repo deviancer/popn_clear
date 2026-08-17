@@ -11,10 +11,11 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
-  const TABLE_IDS = ["0", "1", "2", "3", "4"];
-  const STATUS_ORDER = ["", "clear", "fail"];
+  const TABLE_IDS = ["1", "2", "3", "4", "5"];
+  const STATUS_ORDER = ["", "easy-clear", "clear", "fail"];
   const STATUS_LABELS = {
     "": "未游玩",
+    "easy-clear": "EASY-CLEAR",
     clear: "CLEAR",
     fail: "FAIL",
   };
@@ -28,7 +29,7 @@
   }
 
   function isGroupHeading(line, table) {
-    if (table === "0") return /^[A-Z]級(?:強|弱)?$/.test(line);
+    if (table === "5") return /^[A-Z]級(?:強|弱)?$/.test(line);
     return /^■Lv\d+(?:強|弱)?$/.test(line);
   }
 
@@ -79,7 +80,21 @@
   }
 
   function normalizeStatus(value) {
-    return value === "clear" || value === "fail" ? value : "";
+    return value === "easy-clear" || value === "clear" || value === "fail" ? value : "";
+  }
+
+  function remapRecordTable(records, fromTable, toTable) {
+    const source = records && typeof records === "object" && !Array.isArray(records) ? records : {};
+    const fromPrefix = `sran:v1:${fromTable}:`;
+    const toPrefix = `sran:v1:${toTable}:`;
+    const remapped = {};
+
+    Object.entries(source).forEach(([key, value]) => {
+      const nextKey = key.startsWith(fromPrefix) ? `${toPrefix}${key.slice(fromPrefix.length)}` : key;
+      remapped[nextKey] = value;
+    });
+
+    return remapped;
   }
 
   function recordStatus(records, song) {
@@ -101,5 +116,6 @@
     normalizeStatus,
     parseSrandomText,
     recordStatus,
+    remapRecordTable,
   };
 });

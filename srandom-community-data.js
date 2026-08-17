@@ -29,10 +29,11 @@
   }
 
   function countRecords(records, catalog) {
-    const counts = { total: catalog.songs.length, clear: 0, fail: 0, unplayed: 0 };
+    const counts = { total: catalog.songs.length, easyClear: 0, clear: 0, fail: 0, unplayed: 0 };
     catalog.songs.forEach((song) => {
       const status = srandomData.recordStatus(records, song);
-      counts[status || "unplayed"] += 1;
+      if (status === "easy-clear") counts.easyClear += 1;
+      else counts[status || "unplayed"] += 1;
     });
     return counts;
   }
@@ -54,12 +55,14 @@
         display_name: row.display_name || "player",
         table_id: "all",
         total_count: 0,
+        easy_clear_count: 0,
         clear_count: 0,
         fail_count: 0,
         table_count: 0,
         updated_at: null,
       };
       current.total_count += Number(row.total_count) || 0;
+      current.easy_clear_count += Number(row.easy_clear_count) || 0;
       current.clear_count += Number(row.clear_count) || 0;
       current.fail_count += Number(row.fail_count) || 0;
       current.table_count += 1;
@@ -72,6 +75,7 @@
     return [...players.values()].sort(
       (a, b) =>
         b.clear_count - a.clear_count ||
+        b.easy_clear_count - a.easy_clear_count ||
         a.fail_count - b.fail_count ||
         new Date(b.updated_at) - new Date(a.updated_at),
     );
@@ -81,6 +85,7 @@
     return [...rows].sort(
       (a, b) =>
         b.clear_count - a.clear_count ||
+        b.easy_clear_count - a.easy_clear_count ||
         a.fail_count - b.fail_count ||
         new Date(b.updated_at) - new Date(a.updated_at),
     );

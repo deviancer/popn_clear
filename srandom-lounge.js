@@ -1,7 +1,8 @@
 "use strict";
 
 const SRAN_CONFIG = window.POPN_SUPABASE || {};
-const { TABLE_IDS, STATUS_LABELS, parseSrandomText, recordStatus } = window.POPN_SRANDOM_DATA;
+const { TABLE_IDS, STATUS_LABELS, parseSrandomText, recordStatus, remapRecordTable } =
+  window.POPN_SRANDOM_DATA;
 const {
   aggregateSummaries,
   changedSongs,
@@ -16,7 +17,7 @@ let loadToken = 0;
 let authMode = "login";
 let messageResolver = null;
 let selectedPlayer = null;
-let selectedDetailTable = "0";
+let selectedDetailTable = "1";
 const catalogs = {};
 const authState = { user: null, profile: null };
 
@@ -258,14 +259,24 @@ function storageKey(table) {
   return `popn_clear_sran${table}`;
 }
 
-function loadLocalRecords(table) {
+function readLocalRecords(key) {
   try {
-    const value = JSON.parse(localStorage.getItem(storageKey(table)) || "{}");
+    const value = JSON.parse(localStorage.getItem(key) || "{}");
     return value && typeof value === "object" && !Array.isArray(value) ? value : {};
   } catch (error) {
     console.error(error);
     return {};
   }
+}
+
+function loadLocalRecords(table) {
+  const current = readLocalRecords(storageKey(table));
+  if (table !== "5") return current;
+
+  const legacy = remapRecordTable(readLocalRecords(storageKey("0")), "0", "5");
+  const migrated = { ...legacy, ...current };
+  if (Object.keys(legacy).length) saveLocalRecords("5", migrated);
+  return migrated;
 }
 
 function saveLocalRecords(table, records) {
@@ -310,7 +321,7 @@ function renderRankMessage(message, loading = false) {
   rankTableBody.replaceChildren();
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 9;
+  cell.colSpan = 10;
   if (loading) {
     cell.innerHTML = '<span class="loading-line"><span class="loading-spinner"></span>加载中...</span>';
   } else {
@@ -329,15 +340,17 @@ function renderRankRows(rows) {
   }
 
   rows.forEach((row) => {
-    const clearRate = row.total_count ? (row.clear_count / row.total_count) * 100 : 0;
-    const unplayed = Math.max(0, row.total_count - row.clear_count - row.fail_count);
+    const cleared = (row.easy_clear_count || 0) + (row.clear_count || 0);
+    const clearRate = row.total_count ? (cleared / row.total_count) * 100 : 0;
+    const unplayed = Math.max(0, row.total_count - cleared - row.fail_count);
     const tableCount = row.table_count || 1;
-    const range = activeTable === "all" ? "Sran0–4" : `Sran${activeTable}`;
+    const range = activeTable === "all" ? "Sran1–5" : `Sran${activeTable}`;
     const element = document.createElement("tr");
     element.className = "rank-row";
     element.innerHTML = `
       <td><strong></strong></td>
       <td><span class="sran-range-chip">${range}</span></td>
+      <td class="sran-count-easy">${row.easy_clear_count || 0}</td>
       <td class="sran-count-clear">${row.clear_count || 0}</td>
       <td class="sran-count-fail">${row.fail_count || 0}</td>
       <td>${unplayed}</td>
@@ -388,7 +401,7 @@ function renderActivityLoading() {
   activityBox.append(item);
 }
 
-function renderPlayerDetailEmpty(message = "点击排行榜里的玩家，可以查看对方 Sran0–4 的逐曲记录。") {
+function renderPlayerDetailEmpty(message = "点击排行榜里的玩家，可以查看对方 Sran1–5 的逐曲记录。") {
   selectedPlayer = null;
   playerDetailPanel.replaceChildren();
   const eyebrow = document.createElement("p");
@@ -425,7 +438,7 @@ function renderDetailSongList(catalog, records) {
     groupName.textContent = group;
     const groupCounts = countRecords(records, { songs });
     const groupProgress = document.createElement("span");
-    groupProgress.textContent = `${groupCounts.clear}/${songs.length} CLEAR`;
+    groupProgress.textContent = `${groupCounts.easyClear + groupCounts.clear}/${songs.length} CLEAR`;
     heading.append(groupName, groupProgress);
     section.append(heading);
 
@@ -465,19 +478,21 @@ function renderPlayerDetail(player) {
     (total, table) => {
       const counts = tableCounts[table];
       total.total += counts.total;
+      total.easyClear += counts.easyClear;
       total.clear += counts.clear;
       total.fail += counts.fail;
       total.unplayed += counts.unplayed;
       return total;
     },
-    { total: 0, clear: 0, fail: 0, unplayed: 0 },
+    { total: 0, easyClear: 0, clear: 0, fail: 0, unplayed: 0 },
   );
-  const clearRate = overall.total ? (overall.clear / overall.total) * 100 : 0;
+  const cleared = overall.easyClear + overall.clear;
+  const clearRate = overall.total ? (cleared / overall.total) * 100 : 0;
 
   playerDetailPanel.replaceChildren();
   const eyebrow = document.createElement("p");
   eyebrow.className = "eyebrow";
-  eyebrow.textContent = "Sran0–4 player dossier";
+  eyebrow.textContent = "Sran1–5 player dossier";
   const title = document.createElement("h2");
   title.textContent = row.display_name || "player";
   const updated = document.createElement("p");
@@ -493,7 +508,8 @@ function renderPlayerDetail(player) {
   meter.append(fill);
   const metrics = document.createElement("div");
   metrics.className = "detail-metrics";
-  appendDetailMetric(metrics, "clear", `${overall.clear}/${overall.total}`);
+  appendDetailMetric(metrics, "easy-clear", overall.easyClear);
+  appendDetailMetric(metrics, "clear", overall.clear);
   appendDetailMetric(metrics, "fail", overall.fail);
   appendDetailMetric(metrics, "未游玩", overall.unplayed);
   appendDetailMetric(metrics, "完成率", `${clearRate.toFixed(1)}%`);
@@ -530,7 +546,7 @@ function renderPlayerDetail(player) {
 async function showPlayerDetail(row) {
   const client = getSupabase();
   if (!client || !row?.user_id) return renderPlayerDetailEmpty("暂时读取不到这位玩家的详细数据。");
-  selectedDetailTable = activeTable === "all" ? "0" : activeTable;
+  selectedDetailTable = activeTable === "all" ? "1" : activeTable;
   renderPlayerDetailEmpty("正在加载玩家的五张 Sran 表……");
   try {
     await loadAllCatalogs();
@@ -565,7 +581,7 @@ async function loadLoungeData() {
   const [summaryResult, activityResult] = await Promise.all([
     client
       .from("srandom_summaries")
-      .select("user_id, display_name, table_id, total_count, clear_count, fail_count, updated_at")
+      .select("user_id, display_name, table_id, total_count, easy_clear_count, clear_count, fail_count, updated_at")
       .order("clear_count", { ascending: false })
       .limit(1000),
     client
@@ -603,11 +619,12 @@ async function loadLoungeData() {
   }
 }
 
-function buildActivityMessage(previousSummary, counts, changes, clearAdds) {
+function buildActivityMessage(previousSummary, counts, changes, easyClearAdds, clearAdds) {
   if (!previousSummary) {
-    return `首次公开记录：CLEAR ${counts.clear}，FAIL ${counts.fail}。`;
+    return `首次公开记录：EASY-CLEAR ${counts.easyClear}，CLEAR ${counts.clear}，FAIL ${counts.fail}。`;
   }
   const parts = [`变更 ${changes.length} 首`];
+  if (easyClearAdds.length) parts.push(`新增 EASY-CLEAR ${easyClearAdds.length} 首`);
   if (clearAdds.length) parts.push(`新增 CLEAR ${clearAdds.length} 首`);
   return `更新记录：${parts.join("，")}。`;
 }
@@ -617,7 +634,7 @@ async function submitAllSrandomRecords() {
   if (!client) return showNotice(NETWORK_RETRY_MESSAGE);
   if (!requireSignedIn()) return;
   const confirmed = await showConfirm(
-    "将合并本机与账号中的 Sran0–4 记录，并把五张表的汇总发布到 Sran交流室。本机已有状态优先，账号中仅云端存在的记录会保留。",
+    "将合并本机与账号中的 Sran1–5 记录，并把五张表的汇总发布到 Sran交流室。本机已有状态优先，账号中仅云端存在的记录会保留。",
   );
   if (!confirmed) return;
 
@@ -631,7 +648,7 @@ async function submitAllSrandomRecords() {
       client.from("srandom_records").select("table_id, records").eq("user_id", userId),
       client
         .from("srandom_summaries")
-        .select("table_id, clear_count, fail_count")
+        .select("table_id, easy_clear_count, clear_count, fail_count")
         .eq("user_id", userId),
     ]);
     if (recordResult.error) throw recordResult.error;
@@ -645,6 +662,7 @@ async function submitAllSrandomRecords() {
     const updatedAt = new Date().toISOString();
     let changedTableCount = 0;
     let changedSongCount = 0;
+    let addedEasyClearCount = 0;
     let addedClearCount = 0;
 
     TABLE_IDS.forEach((table) => {
@@ -653,6 +671,11 @@ async function submitAllSrandomRecords() {
       const previousSummary = previousSummaries.get(table);
       const merged = mergeRecords(cloudRow?.records || {}, loadLocalRecords(table), catalog);
       const changes = changedSongs(cloudRow?.records || {}, merged, catalog);
+      const easyClearAdds = changes.filter(
+        (song) =>
+          recordStatus(cloudRow?.records || {}, song) !== "easy-clear" &&
+          recordStatus(merged, song) === "easy-clear",
+      );
       const clearAdds = changes.filter(
         (song) => recordStatus(cloudRow?.records || {}, song) !== "clear" && recordStatus(merged, song) === "clear",
       );
@@ -674,24 +697,26 @@ async function submitAllSrandomRecords() {
           table_id: Number(table),
           display_name: displayName,
           total_count: counts.total,
+          easy_clear_count: counts.easyClear,
           clear_count: counts.clear,
           fail_count: counts.fail,
           updated_at: updatedAt,
         });
       }
 
-      if (changes.length || (!previousSummary && counts.clear + counts.fail > 0)) {
+      if (changes.length || (!previousSummary && counts.easyClear + counts.clear + counts.fail > 0)) {
         activityInserts.push({
           user_id: userId,
           display_name: displayName,
           table_id: Number(table),
-          message: buildActivityMessage(previousSummary, counts, changes, clearAdds),
+          message: buildActivityMessage(previousSummary, counts, changes, easyClearAdds, clearAdds),
         });
       }
 
       if (changes.length) {
         changedTableCount += 1;
         changedSongCount += changes.length;
+        addedEasyClearCount += easyClearAdds.length;
         addedClearCount += clearAdds.length;
       }
     });
@@ -716,7 +741,7 @@ async function submitAllSrandomRecords() {
     await loadLoungeData();
     if (changedTableCount) {
       await showNotice(
-        `Sran0–4 提交成功：更新 ${changedTableCount} 张表、${changedSongCount} 首记录，新增 CLEAR ${addedClearCount} 首。`,
+        `Sran1–5 提交成功：更新 ${changedTableCount} 张表、${changedSongCount} 首记录，新增 EASY-CLEAR ${addedEasyClearCount} 首、新增 CLEAR ${addedClearCount} 首。`,
         "提交完成",
       );
     } else if (summaryUpserts.length) {
@@ -772,7 +797,7 @@ document.querySelectorAll("[data-table]").forEach((button) => {
       .forEach((item) => item.classList.toggle("active", item.dataset.table === activeTable));
     renderPlayerDetailEmpty(
       activeTable === "all"
-        ? "选择总排行玩家，查看对方 Sran0–4 的逐曲记录。"
+        ? "选择总排行玩家，查看对方 Sran1–5 的逐曲记录。"
         : `选择 Sran${activeTable} 排行玩家，查看对方完整的五张 Sran 表。`,
     );
     loadLoungeData();

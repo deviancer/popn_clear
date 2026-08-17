@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>popn_clear - Sran交流室</title>
     <link rel="stylesheet" href="./styles.css?v=20260817-3" />
-    <link rel="stylesheet" href="./srandom-lounge.css?v=20260817-1" />
+    <link rel="stylesheet" href="./srandom-lounge.css?v=20260817-2" />
   </head>
   <body>
     <div class="app-shell lounge-shell">
@@ -24,11 +24,11 @@
           <a class="level-pill nav-link-pill muted" href="./sheet.html?level=48">48</a>
           <a class="level-pill nav-link-pill muted" href="./sheet.html?level=49">49</a>
           <a class="level-pill nav-link-pill muted" href="./sheet.html?level=50">50</a>
-          <a class="level-pill nav-link-pill sran-nav-pill muted" href="./srandom.html?table=0">Sran0</a>
           <a class="level-pill nav-link-pill sran-nav-pill muted" href="./srandom.html?table=1">Sran1</a>
           <a class="level-pill nav-link-pill sran-nav-pill muted" href="./srandom.html?table=2">Sran2</a>
           <a class="level-pill nav-link-pill sran-nav-pill muted" href="./srandom.html?table=3">Sran3</a>
           <a class="level-pill nav-link-pill sran-nav-pill muted" href="./srandom.html?table=4">Sran4</a>
+          <a class="level-pill nav-link-pill sran-nav-pill muted" href="./srandom.html?table=5">Sran5</a>
         </nav>
 
         <div class="profile-menu">
@@ -64,7 +64,7 @@
             <div>
               <p class="eyebrow">S-RANDOM community room</p>
               <h1>Sran交流室</h1>
-              <p class="sran-community-copy">汇总 Sran0–4 的 CLEAR、FAIL 与未游玩记录。</p>
+              <p class="sran-community-copy">汇总 Sran1–5 的 EASY-CLEAR、CLEAR、FAIL 与未游玩记录。</p>
             </div>
             <div class="lounge-actions">
               <button class="ghost-button hide-preview" id="community-hide" type="button">隐藏我的 Sran 数据</button>
@@ -75,16 +75,16 @@
           <div class="sran-room-stats" aria-label="Sran交流室数据范围">
             <span><strong id="catalog-total">1450</strong> 首歌曲</span>
             <span><strong>5</strong> 张难度表</span>
-            <span><strong>3</strong> 种记录状态</span>
+            <span><strong>4</strong> 种记录状态</span>
           </div>
 
           <div class="level-tabs sran-community-tabs" aria-label="Sran表筛选">
             <button class="active" type="button" data-table="all">全部</button>
-            <button type="button" data-table="0">Sran0</button>
             <button type="button" data-table="1">Sran1</button>
             <button type="button" data-table="2">Sran2</button>
             <button type="button" data-table="3">Sran3</button>
             <button type="button" data-table="4">Sran4</button>
+            <button type="button" data-table="5">Sran5</button>
           </div>
 
           <div class="rank-table-wrap">
@@ -93,6 +93,7 @@
                 <tr>
                   <th>玩家</th>
                   <th>范围</th>
+                  <th>Easy Clear</th>
                   <th>Clear</th>
                   <th>Fail</th>
                   <th>未游玩</th>
@@ -103,7 +104,7 @@
                 </tr>
               </thead>
               <tbody id="rank-table-body">
-                <tr><td colspan="9">Sran交流室还没有玩家提交数据。</td></tr>
+                <tr><td colspan="10">Sran交流室还没有玩家提交数据。</td></tr>
               </tbody>
             </table>
           </div>
@@ -126,7 +127,7 @@
           <section class="player-detail-panel sran-player-detail" id="player-detail-panel">
             <p class="eyebrow">S-RANDOM dossier</p>
             <h2>玩家 Sran 档案</h2>
-            <p class="detail-empty">点击排行榜里的玩家，可以查看对方 Sran0–4 的逐曲记录。</p>
+            <p class="detail-empty">点击排行榜里的玩家，可以查看对方 Sran1–5 的逐曲记录。</p>
           </section>
         </aside>
       </main>
@@ -173,8 +174,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./supabase-config.js"></script>
-    <script src="./srandom-data.js?v=20260817-1"></script>
-    <script src="./srandom-community-data.js?v=20260817-1"></script>
-    <script src="./srandom-lounge.js?v=20260817-1"></script>
+    <script src="./srandom-data.js?v=20260817-2"></script>
+    <script src="./srandom-community-data.js?v=20260817-2"></script>
+    <script src="./srandom-lounge.js?v=20260817-2"></script>
   </body>
 </html>

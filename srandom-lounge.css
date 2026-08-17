@@ -5,7 +5,7 @@
 }
 
 .sran-community-grid {
-  grid-template-columns: minmax(0, 1fr) 400px;
+  grid-template-columns: minmax(0, 1fr) 360px;
 }
 
 .sran-community-main {
@@ -76,7 +76,7 @@
 }
 
 .sran-rank-table {
-  min-width: 760px;
+  min-width: 820px;
 }
 
 .sran-rank-table th,
@@ -89,8 +89,12 @@
   box-shadow: inset 4px 0 0 var(--sran-room-mint);
 }
 
+.sran-rank-table .sran-count-easy {
+  color: var(--clear-green);
+}
+
 .sran-rank-table .sran-count-clear {
-  color: #17836d;
+  color: #a45e48;
 }
 
 .sran-rank-table .sran-count-fail {
@@ -136,6 +140,10 @@
 
 .sran-player-detail .detail-meter span {
   background: linear-gradient(90deg, #8edacb, var(--sran-room-mint), #16836d);
+}
+
+.sran-player-detail .detail-metrics {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .sran-detail-table-tabs {
@@ -213,6 +221,10 @@
   background: #fff;
 }
 
+.sran-detail-song.status-easy-clear {
+  border-left-color: var(--clear-green);
+}
+
 .sran-detail-song.status-clear {
   border-left-color: var(--sran-room-mint);
 }
@@ -234,6 +246,11 @@
   color: #48504e;
   font-size: 9px;
   font-weight: 900;
+}
+
+.sran-detail-song.status-easy-clear .sran-detail-status {
+  background: var(--clear-green);
+  color: #fff;
 }
 
 .sran-detail-song.status-clear .sran-detail-status {
@@ -307,6 +324,10 @@
 
   .sran-room-stats span {
     justify-content: flex-start;
+  }
+
+  .sran-player-detail .detail-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .sran-detail-table-tabs {

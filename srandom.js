@@ -6,10 +6,12 @@ const {
   nextStatus,
   parseSrandomText,
   recordStatus,
+  remapRecordTable,
 } = window.POPN_SRANDOM_DATA;
 
-const initialTable = new URLSearchParams(window.location.search).get("table");
-let currentTable = TABLE_IDS.includes(initialTable) ? initialTable : "0";
+const requestedTable = new URLSearchParams(window.location.search).get("table");
+const initialTable = requestedTable === "0" ? "5" : requestedTable;
+let currentTable = TABLE_IDS.includes(initialTable) ? initialTable : "1";
 let catalog = { table: currentTable, groups: [], songs: [] };
 let records = {};
 let activeGroup = "all";
@@ -30,14 +32,26 @@ function storageKey(table = currentTable) {
   return `popn_clear_sran${table}`;
 }
 
-function loadRecords(table) {
+function readStoredRecords(key) {
   try {
-    const value = JSON.parse(localStorage.getItem(storageKey(table)) || "{}");
+    const value = JSON.parse(localStorage.getItem(key) || "{}");
     return value && typeof value === "object" && !Array.isArray(value) ? value : {};
   } catch (error) {
     console.error(error);
     return {};
   }
+}
+
+function loadRecords(table) {
+  const current = readStoredRecords(storageKey(table));
+  if (table !== "5") return current;
+
+  const legacy = remapRecordTable(readStoredRecords(storageKey("0")), "0", "5");
+  const migrated = { ...legacy, ...current };
+  if (Object.keys(legacy).length) {
+    localStorage.setItem(storageKey("5"), JSON.stringify(migrated));
+  }
+  return migrated;
 }
 
 function saveRecords() {
@@ -49,10 +63,11 @@ function statusFor(song) {
 }
 
 function statusCounts(songs = catalog.songs) {
-  const counts = { unplayed: 0, clear: 0, fail: 0 };
+  const counts = { unplayed: 0, easyClear: 0, clear: 0, fail: 0 };
   songs.forEach((song) => {
     const status = statusFor(song);
-    counts[status || "unplayed"] += 1;
+    if (status === "easy-clear") counts.easyClear += 1;
+    else counts[status || "unplayed"] += 1;
   });
   return counts;
 }
@@ -97,22 +112,25 @@ function makeFilterButton(label, count, value, kind) {
 function renderSidebar() {
   const counts = statusCounts();
   const total = catalog.songs.length;
-  progressLabel.textContent = `${counts.clear} / ${total}`;
-  progressBar.style.width = `${total ? (counts.clear / total) * 100 : 0}%`;
+  const cleared = counts.easyClear + counts.clear;
+  progressLabel.textContent = `${cleared} / ${total}`;
+  progressBar.style.width = `${total ? (cleared / total) * 100 : 0}%`;
 
   statusFilters.replaceChildren(
     makeFilterButton("全部", total, "all", "status"),
     makeFilterButton("未游玩", counts.unplayed, "unplayed", "status"),
+    makeFilterButton("EASY-CLEAR", counts.easyClear, "easy-clear", "status"),
     makeFilterButton("CLEAR", counts.clear, "clear", "status"),
     makeFilterButton("FAIL", counts.fail, "fail", "status"),
   );
 
   groupFilters.replaceChildren(
-    makeFilterButton("ALL", `${counts.clear}/${total}`, "all", "group"),
+    makeFilterButton("ALL", `${cleared}/${total}`, "all", "group"),
     ...catalog.groups.map((group) => {
       const songs = groupSongs(group);
       const groupCounts = statusCounts(songs);
-      return makeFilterButton(group, `${groupCounts.clear}/${songs.length}`, group, "group");
+      const groupCleared = groupCounts.easyClear + groupCounts.clear;
+      return makeFilterButton(group, `${groupCleared}/${songs.length}`, group, "group");
     }),
   );
 }
@@ -120,6 +138,7 @@ function renderSidebar() {
 function applyCardStatus(card, song) {
   const status = statusFor(song);
   card.dataset.status = status || "unplayed";
+  card.classList.toggle("status-easy-clear", status === "easy-clear");
   card.classList.toggle("status-clear", status === "clear");
   card.classList.toggle("status-fail", status === "fail");
   card.querySelector(".sran-card-status").textContent = STATUS_LABELS[status];
@@ -133,7 +152,7 @@ function renderCard(song) {
   const card = document.createElement("button");
   card.type = "button";
   card.className = "sran-card";
-  card.title = "点击切换：未游玩 → CLEAR → FAIL";
+  card.title = "点击切换：未游玩 → EASY-CLEAR → CLEAR → FAIL";
 
   const difficulty = document.createElement("span");
   difficulty.className = "sran-card-difficulty";
