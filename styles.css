@@ -614,10 +614,13 @@ textarea {
 }
 
 .toolbar {
-  display: flex;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 16px;
   align-items: end;
-  justify-content: space-between;
+}
+
+.toolbar-heading {
   margin-bottom: 14px;
   padding: 18px 4px 8px;
 }
@@ -642,6 +645,8 @@ h1 {
   display: flex;
   gap: 10px;
   align-items: end;
+  margin-bottom: 14px;
+  padding: 0 4px 8px 0;
 }
 
 .batch-toggle {
@@ -776,6 +781,7 @@ h1 {
 
 .song-sections {
   display: grid;
+  grid-column: 1 / -1;
   gap: 24px;
 }
 
@@ -2581,8 +2587,12 @@ h1 {
   }
 
   .toolbar {
+    grid-template-columns: 1fr;
     align-items: stretch;
-    flex-direction: column;
+  }
+
+  .toolbar-heading {
+    margin-bottom: 8px;
   }
 
   .batch-mode .app-shell {
@@ -2640,6 +2650,10 @@ h1 {
   .topbar {
     gap: 8px;
     padding: 8px 0 10px;
+  }
+
+  .sheet-page .topbar {
+    position: static;
   }
 
   .brand-mark {
@@ -2811,21 +2825,32 @@ h1 {
   }
 
   .toolbar {
-    gap: 8px;
+    display: block;
+  }
+
+  .toolbar-heading {
     margin-bottom: 8px;
     padding: 8px 0 4px;
   }
 
   .toolbar-actions {
-    align-items: stretch;
-    flex-direction: column;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    align-items: end;
+    margin: 0 -6px 8px;
+    padding: 6px;
+    border-bottom: 1px solid rgba(222, 223, 230, 0.88);
+    background: rgba(246, 247, 251, 0.94);
+    backdrop-filter: blur(18px);
   }
 
   .batch-toggle {
-    width: 100%;
+    flex: 0 0 auto;
   }
 
   .search-box {
+    flex: 1 1 auto;
     min-width: 0;
   }
 
