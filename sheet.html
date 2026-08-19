@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>popn_clear - 难度表</title>
-    <link rel="stylesheet" href="./styles.css?v=20260819-2" />
+    <link rel="stylesheet" href="./styles.css?v=20260819-3" />
   </head>
   <body class="sheet-page">
     <div class="app-shell">
@@ -115,15 +115,17 @@
               <p class="eyebrow">pop'n music</p>
               <h1 id="page-title">Lv46 难度表</h1>
             </div>
-            <div class="toolbar-actions">
-              <button class="batch-toggle" id="batch-toggle" type="button" aria-pressed="false" aria-controls="batch-panel">
-                <span aria-hidden="true">✓</span>
-                <strong>批量编辑</strong>
-              </button>
-              <label class="search-box">
-                <span>Search</span>
-                <input id="search" type="search" placeholder="Title / genre" />
-              </label>
+            <div class="toolbar-actions-slot">
+              <div class="toolbar-actions">
+                <button class="batch-toggle" id="batch-toggle" type="button" aria-pressed="false" aria-controls="batch-panel">
+                  <span aria-hidden="true">✓</span>
+                  <strong>批量编辑</strong>
+                </button>
+                <label class="search-box">
+                  <span>Search</span>
+                  <input id="search" type="search" placeholder="Title / genre" />
+                </label>
+              </div>
             </div>
 
             <div id="song-list" class="song-sections"></div>
@@ -280,6 +282,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./supabase-config.js"></script>
     <script src="./record-identity.js?v=20260815-1"></script>
-    <script src="./app.js?v=20260817-1"></script>
+    <script src="./app.js?v=20260819-1"></script>
   </body>
 </html>

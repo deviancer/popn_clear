@@ -117,6 +117,9 @@ const lampPie = document.querySelector("#lamp-pie");
 const pieLegend = document.querySelector("#pie-legend");
 const currentLevelLabel = document.querySelector("#current-level");
 const pageTitle = document.querySelector("#page-title");
+const toolbar = document.querySelector(".toolbar");
+const toolbarActionsSlot = document.querySelector(".toolbar-actions-slot");
+const toolbarActions = document.querySelector(".toolbar-actions");
 const batchToggle = document.querySelector("#batch-toggle");
 const batchPanel = document.querySelector("#batch-panel");
 const batchSelectionCount = document.querySelector("#batch-selection-count");
@@ -157,6 +160,48 @@ const authState = {
 };
 const NETWORK_RETRY_MESSAGE = "网络加载失败，请检查网络，稍后重试。";
 const REGISTER_NETWORK_RETRY_MESSAGE = "注册网络加载失败，请检查网络，稍后重试。";
+
+function initializeMobileToolbar() {
+  if (!toolbar || !toolbarActionsSlot || !toolbarActions) return;
+
+  const mobileQuery = window.matchMedia("(max-width: 720px)");
+  let frameId = 0;
+
+  const update = () => {
+    frameId = 0;
+
+    if (!mobileQuery.matches) {
+      toolbarActions.classList.remove("is-fixed");
+      toolbarActionsSlot.classList.remove("is-fixed");
+      toolbarActionsSlot.style.removeProperty("--mobile-toolbar-height");
+      return;
+    }
+
+    const toolbarHeight = toolbarActions.offsetHeight;
+    const slotTop = toolbarActionsSlot.getBoundingClientRect().top;
+    const toolbarBottom = toolbar.getBoundingClientRect().bottom;
+    const shouldFix = slotTop <= 0 && toolbarBottom > toolbarHeight;
+
+    toolbarActionsSlot.style.setProperty("--mobile-toolbar-height", `${toolbarHeight}px`);
+    toolbarActions.classList.toggle("is-fixed", shouldFix);
+    toolbarActionsSlot.classList.toggle("is-fixed", shouldFix);
+  };
+
+  const scheduleUpdate = () => {
+    if (frameId) return;
+    frameId = window.requestAnimationFrame(update);
+  };
+
+  window.addEventListener("scroll", scheduleUpdate, { passive: true });
+  window.addEventListener("resize", scheduleUpdate, { passive: true });
+  window.visualViewport?.addEventListener("resize", scheduleUpdate, { passive: true });
+  window.visualViewport?.addEventListener("scroll", scheduleUpdate, { passive: true });
+  mobileQuery.addEventListener?.("change", scheduleUpdate);
+  if ("ResizeObserver" in window) {
+    new ResizeObserver(scheduleUpdate).observe(toolbarActions);
+  }
+  scheduleUpdate();
+}
 
 function getSupabaseClient({ notify = false } = {}) {
   if (supabaseClient) return supabaseClient;
@@ -1605,6 +1650,8 @@ document.querySelectorAll(".level-pill[data-level]").forEach((button) => {
     loadLevel(nextLevel);
   });
 });
+
+initializeMobileToolbar();
 
 loadLevel(currentLevel).catch((error) => {
   songList.textContent = `Failed to load diff/${currentLevel}.txt`;

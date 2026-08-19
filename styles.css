@@ -625,6 +625,10 @@ textarea {
   padding: 18px 4px 8px;
 }
 
+.toolbar-actions-slot {
+  display: contents;
+}
+
 .eyebrow {
   margin: 0 0 3px;
   color: var(--accent);
@@ -2834,15 +2838,30 @@ h1 {
   }
 
   .toolbar-actions {
-    position: sticky;
-    top: 0;
-    z-index: 20;
     align-items: end;
-    margin: 0 -6px 8px;
+    margin: 0 -6px;
     padding: 6px;
     border-bottom: 1px solid rgba(222, 223, 230, 0.88);
     background: rgba(246, 247, 251, 0.94);
     backdrop-filter: blur(18px);
+  }
+
+  .toolbar-actions-slot {
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .toolbar-actions-slot.is-fixed {
+    height: var(--mobile-toolbar-height);
+  }
+
+  .toolbar-actions.is-fixed {
+    position: fixed;
+    top: 0;
+    right: max(6px, env(safe-area-inset-right));
+    left: max(6px, env(safe-area-inset-left));
+    z-index: 30;
+    margin: 0;
   }
 
   .batch-toggle {
