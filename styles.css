@@ -2652,7 +2652,9 @@ h1 {
   }
 
   .topbar {
-    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) 38px auto;
+    column-gap: 7px;
+    row-gap: 7px;
     padding: 8px 0 10px;
   }
 
@@ -2676,6 +2678,8 @@ h1 {
   }
 
   .level-nav {
+    grid-column: 1 / -1;
+    grid-row: 2;
     gap: 6px;
     padding: 0 1px 2px;
   }
@@ -2686,26 +2690,24 @@ h1 {
   }
 
   .profile-actions {
-    display: grid;
-    grid-template-columns: 38px minmax(0, 1fr);
-    gap: 7px;
-    width: 100%;
-    align-items: center;
+    display: contents;
   }
 
   .room-button {
-    order: 1;
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .profile-menu {
-    order: 2;
+    grid-column: 3;
+    grid-row: 1;
   }
 
   .sync-actions {
-    order: 3;
     grid-column: 1 / -1;
+    grid-row: 3;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     width: 100%;
     gap: 6px;
   }
@@ -2713,15 +2715,12 @@ h1 {
   .sync-button {
     justify-content: center;
     min-height: 32px;
-    padding: 0 8px;
-    font-size: 12px;
+    padding: 0 4px;
+    font-size: 10px;
   }
 
   .sync-button span {
-    width: 18px;
-    height: 18px;
-    border-radius: 5px;
-    font-size: 11px;
+    display: none;
   }
 
   .profile-chip {
@@ -2742,6 +2741,7 @@ h1 {
 
   .side-panel {
     display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
     gap: 8px;
     padding: 8px;
     border-color: rgba(222, 223, 230, 0.72);
@@ -2754,6 +2754,7 @@ h1 {
   }
 
   .progress-box {
+    grid-column: 1 / -1;
     margin-bottom: 0;
     font-size: 12px;
   }
@@ -2764,6 +2765,8 @@ h1 {
   }
 
   .sort-button {
+    grid-column: 1;
+    grid-row: 2;
     min-height: 30px;
     margin-bottom: 0;
     padding: 0;
@@ -2776,26 +2779,31 @@ h1 {
   }
 
   .group-list {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    max-height: 116px;
+    grid-column: 2;
+    grid-row: 2;
+    display: flex;
+    max-height: none;
     gap: 6px;
-    overflow-x: hidden;
-    overflow-y: auto;
-    padding: 1px 3px 1px 1px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 1px 1px 5px;
+    scrollbar-width: thin;
   }
 
   .group-row {
+    flex: 0 0 auto;
     grid-template-columns: minmax(0, 1fr) 30px;
     gap: 4px;
-    min-width: 0;
+    min-width: 118px;
   }
 
   .group-list::-webkit-scrollbar {
-    width: 8px;
+    width: auto;
+    height: 6px;
   }
 
   .group-button {
+    flex: 0 0 auto;
     min-width: 0;
     min-height: 32px;
     padding: 6px 8px;
@@ -2804,6 +2812,11 @@ h1 {
 
   .group-button.major {
     margin-top: 0;
+  }
+
+  .group-list > .group-button {
+    width: auto;
+    min-width: 88px;
   }
 
   .group-button.minor {
@@ -2936,15 +2949,16 @@ h1 {
 
   .minor-section > .song-list,
   .song-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
   }
 
   .song-card {
     min-height: 0;
-    gap: 7px;
+    min-width: 0;
+    gap: 8px;
     justify-content: start;
-    padding: 8px;
+    padding: 9px 10px;
     box-shadow: 0 7px 16px rgba(39, 44, 57, 0.08);
   }
 
@@ -3033,13 +3047,18 @@ h1 {
   }
 
   .song-main {
-    grid-template-columns: minmax(0, 1fr) 30px;
-    gap: 5px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
   }
 
   .song-head {
     min-height: 0;
-    gap: 5px;
+    min-width: 0;
+    gap: 7px;
+  }
+
+  .song-head > div:first-child {
+    min-width: 0;
   }
 
   .genre {
@@ -3052,9 +3071,11 @@ h1 {
 
   .title {
     display: -webkit-box;
+    min-width: 0;
     overflow: hidden;
-    font-size: 13px;
-    line-height: 1.15;
+    font-size: 15px;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
   }
@@ -3083,11 +3104,13 @@ h1 {
   }
 
   .diff-cell dd {
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   .control-grid {
-    gap: 5px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
   }
 
   .control-grid label {
@@ -3100,7 +3123,7 @@ h1 {
 
   .control-grid input,
   .control-grid select {
-    height: 30px;
+    height: 32px;
     min-width: 0;
     padding: 0 5px;
     font-size: 12px;
@@ -3112,20 +3135,15 @@ h1 {
   }
 
   .icon-rail img {
-    max-width: 30px;
-    max-height: 20px;
+    max-width: 44px;
+    max-height: 28px;
   }
 
   .unrecorded-badge {
-    min-width: 24px;
-    min-height: 22px;
-    padding: 0;
-    font-size: 0;
-  }
-
-  .unrecorded-badge::after {
-    font-size: 12px;
-    content: "-";
+    min-width: 44px;
+    min-height: 24px;
+    padding: 0 5px;
+    font-size: 10px;
   }
 
   .home-shell,
